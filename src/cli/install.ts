@@ -307,7 +307,7 @@ async function runInstall(config: InstallConfig): Promise<number> {
   console.log(`  ${BLUE}${docsUrl}${RESET}`);
   console.log();
 
-  await askToStarRepo(config);
+  // await askToStarRepo(config);
 
   return 0;
 }
