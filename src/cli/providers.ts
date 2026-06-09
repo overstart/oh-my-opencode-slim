@@ -5,7 +5,12 @@ import type { InstallConfig } from './types';
 const SCHEMA_URL =
   'https://unpkg.com/oh-my-opencode-slim@latest/oh-my-opencode-slim.schema.json';
 
-export const GENERATED_PRESETS = ['openai', 'opencode-go', 'free', 'volcengine'] as const;
+export const GENERATED_PRESETS = [
+  'openai',
+  'opencode-go',
+  'free',
+  'volcengine',
+] as const;
 
 // Model mappings by provider/preset.
 export const MODEL_MAPPINGS = {
@@ -63,14 +68,14 @@ export const MODEL_MAPPINGS = {
     fixer: { model: 'opencode/minimax-m2.5-free', variant: 'low' },
   },
   volcengine: {
-    orchestrator: {model: 'volcengine-plan/doubao-seed-2.0-pro'},
-    oracle: {model: 'volcengine-plan/glm-5.1', variant: 'high'},
-    council: {model: 'volcengine-plan/doubao-seed-2.0-pro', variant: 'medium'},
-    librarian: {model: 'volcengine-plan/doubao-seed-2.0-lite', variant: 'low'},
-    explorer: {model: 'volcengine-plan/doubao-seed-2.0-lite', variant: 'low'},
-    designer: {model: 'volcengine-plan/doubao-seed-2.0-pro', variant: 'medium'},
-    fixer: {model: 'volcengine-plan/doubao-seed-2.0-code', variant: 'low'},
-    observer: {model: 'volcengine-plan/doubao-seed-2.0-lite', variant: 'low'},
+    orchestrator: { model: 'volcengine-plan/minimax-m3' },
+    oracle: { model: 'volcengine-plan/deepseek-v4-pro', variant: 'high' },
+    council: { model: 'volcengine-plan/minimax-m3', variant: 'medium' },
+    librarian: { model: 'volcengine-plan/deepseek-v4-flash', variant: 'low' },
+    explorer: { model: 'volcengine-plan/deepseek-v4-flash', variant: 'low' },
+    designer: { model: 'volcengine-plan/minimax-m3', variant: 'medium' },
+    fixer: { model: 'volcengine-plan/deepseek-v4-flash', variant: 'low' },
+    observer: { model: 'volcengine-plan/deepseek-v4-flash', variant: 'low' },
   },
 } as const;
 
