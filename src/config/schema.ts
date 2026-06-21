@@ -2,15 +2,6 @@ import { z } from 'zod';
 import { AGENT_ALIASES, ALL_AGENT_NAMES } from './constants';
 import { CouncilConfigSchema } from './council-schema';
 
-const FALLBACK_AGENT_NAMES = [
-  'orchestrator',
-  'oracle',
-  'designer',
-  'explorer',
-  'librarian',
-  'fixer',
-] as const;
-
 const MANUAL_AGENT_NAMES = [
   'orchestrator',
   'oracle',
@@ -63,21 +54,6 @@ export const ManualPlanSchema = z
 export type ManualAgentName = (typeof MANUAL_AGENT_NAMES)[number];
 export type ManualAgentPlan = z.infer<typeof ManualAgentPlanSchema>;
 export type ManualPlan = z.infer<typeof ManualPlanSchema>;
-
-const AgentModelChainSchema = z.array(z.string()).min(1);
-
-const FallbackChainsSchema = z
-  .object({
-    orchestrator: AgentModelChainSchema.optional(),
-    oracle: AgentModelChainSchema.optional(),
-    designer: AgentModelChainSchema.optional(),
-    explorer: AgentModelChainSchema.optional(),
-    librarian: AgentModelChainSchema.optional(),
-    fixer: AgentModelChainSchema.optional(),
-  })
-  .catchall(AgentModelChainSchema);
-
-export type FallbackAgentName = (typeof FALLBACK_AGENT_NAMES)[number];
 
 // Agent override configuration (distinct from SDK's AgentConfig)
 export const AgentOverrideConfigSchema = z
@@ -168,7 +144,7 @@ export const WebsearchConfigSchema = z.object({
 export type WebsearchConfig = z.infer<typeof WebsearchConfigSchema>;
 
 // MCP names
-export const McpNameSchema = z.enum(['websearch', 'context7', 'grep_app']);
+export const McpNameSchema = z.enum(['websearch', 'context7', 'gh_grep']);
 export type McpName = z.infer<typeof McpNameSchema>;
 
 export const InterviewConfigSchema = z.object({
@@ -186,109 +162,100 @@ export const InterviewConfigSchema = z.object({
 
 export type InterviewConfig = z.infer<typeof InterviewConfigSchema>;
 
-export const SessionManagerConfigSchema = z.object({
+export const BackgroundJobsConfigSchema = z.object({
   maxSessionsPerAgent: z.number().int().min(1).max(10).default(2),
   readContextMinLines: z.number().int().min(0).max(1000).default(10),
   readContextMaxFiles: z.number().int().min(0).max(50).default(8),
 });
 
-export type SessionManagerConfig = z.infer<typeof SessionManagerConfigSchema>;
+export type BackgroundJobsConfig = z.infer<typeof BackgroundJobsConfigSchema>;
 
-export const DivoomConfigSchema = z.object({
-  enabled: z.boolean().default(false),
-  python: z
-    .string()
-    .min(1)
-    .default(
-      '/Applications/Divoom MiniToo.app/Contents/Resources/.venv/bin/python',
-    ),
-  script: z
-    .string()
-    .min(1)
-    .default(
-      '/Applications/Divoom MiniToo.app/Contents/Resources/tools/divoom_send.py',
-    ),
-  size: z.number().int().min(1).max(1024).default(128),
-  fps: z.number().int().min(1).max(60).default(8),
-  speed: z.number().int().min(1).max(10_000).default(125),
-  maxFrames: z.number().int().min(1).max(500).default(24),
-  posterizeBits: z.number().int().min(1).max(8).default(3),
-  gifs: z.record(z.string(), z.string().min(1)).optional(),
-});
-
-export type DivoomConfig = z.infer<typeof DivoomConfigSchema>;
-
-// Todo continuation configuration
-export const TodoContinuationConfigSchema = z.object({
-  maxContinuations: z
-    .number()
-    .int()
-    .min(1)
-    .max(50)
-    .default(5)
-    .describe(
-      'Maximum consecutive auto-continuations before stopping to ask user',
-    ),
-  cooldownMs: z
-    .number()
-    .int()
-    .min(0)
-    .max(30_000)
-    .default(3000)
-    .describe('Delay in ms before auto-continuing (gives user time to abort)'),
-  autoEnable: z
-    .boolean()
-    .default(false)
-    .describe(
-      'Automatically enable auto-continue when the orchestrator session has enough todos',
-    ),
-  autoEnableThreshold: z
-    .number()
-    .int()
-    .min(1)
-    .max(50)
-    .default(4)
-    .describe(
-      'Number of todos that triggers auto-enable (only used when autoEnable is true)',
-    ),
-});
-
-export type TodoContinuationConfig = z.infer<
-  typeof TodoContinuationConfigSchema
->;
-
-export const SubtaskConfigSchema = z.object({
-  // Intentionally no .default(): an empty `subtask: {}` block must parse to
-  // `{}` so it cannot shallow-overwrite an inherited value during config
-  // merging. The runtime fallback in createSubtaskTool applies the default.
-  timeoutMs: z
-    .number()
-    .int()
-    .min(0)
-    .max(24 * 60 * 60 * 1000)
-    .optional()
-    .describe(
-      'Subtask worker timeout in ms. 0 disables the timeout. Defaults to 300000 (5 minutes).',
-    ),
-});
-
-export type SubtaskConfig = z.infer<typeof SubtaskConfigSchema>;
-
-export const FailoverConfigSchema = z.object({
-  enabled: z.boolean().default(true),
-  timeoutMs: z.number().min(0).default(15000),
-  retryDelayMs: z.number().min(0).default(500),
-  chains: FallbackChainsSchema.default({}),
-  retry_on_empty: z
-    .boolean()
-    .default(true)
-    .describe(
-      'When true (default), empty provider responses are treated as failures, ' +
-        'triggering fallback/retry. Set to false to treat them as successes.',
-    ),
-});
+export const FailoverConfigSchema = z
+  .object({
+    enabled: z.boolean().default(true),
+    timeoutMs: z.number().min(0).default(15000),
+    retryDelayMs: z.number().min(0).default(500),
+    retry_on_empty: z
+      .boolean()
+      .default(true)
+      .describe(
+        'When true (default), empty provider responses are treated as failures, ' +
+          'triggering fallback/retry. Set to false to treat them as successes.',
+      ),
+  })
+  .strict();
 
 export type FailoverConfig = z.infer<typeof FailoverConfigSchema>;
+
+export const CompanionConfigSchema = z.object({
+  enabled: z.boolean().optional(),
+  binaryPath: z
+    .string()
+    .min(1)
+    .optional()
+    .describe('Path to a custom companion binary to launch.'),
+  position: z
+    .enum(['bottom-right', 'bottom-left', 'top-right', 'top-left'])
+    .optional(),
+  size: z.enum(['small', 'medium', 'large']).optional(),
+  gifPack: z
+    .enum(['default'])
+    .optional()
+    .describe('Bundled companion animation pack to use.'),
+  loopStyle: z
+    .enum(['classic', 'smooth'])
+    .optional()
+    .describe(
+      'Companion animation playback style: classic loops or smooth ping-pong playback.',
+    ),
+  speed: z
+    .number()
+    .min(0.25)
+    .max(4)
+    .optional()
+    .describe('Companion animation playback speed multiplier. Defaults to 1.'),
+  debug: z
+    .boolean()
+    .optional()
+    .describe('Enable verbose native companion debug logs.'),
+});
+
+export type CompanionConfig = z.infer<typeof CompanionConfigSchema>;
+
+export const AcpAgentPermissionModeSchema = z.enum(['ask', 'allow', 'reject']);
+
+export const MAX_ACP_TIMEOUT_MS = 2_147_483_647;
+
+export const AcpAgentConfigSchema = z
+  .object({
+    command: z.string().min(1),
+    args: z.array(z.string()).default([]),
+    env: z.record(z.string(), z.string()).default({}),
+    cwd: z.string().min(1).optional(),
+    description: z.string().min(1).optional(),
+    prompt: z.string().min(1).optional(),
+    orchestratorPrompt: z.string().min(1).optional(),
+    wrapperModel: ProviderModelIdSchema.optional(),
+    timeoutMs: z
+      .number()
+      .int()
+      .min(0)
+      .max(MAX_ACP_TIMEOUT_MS)
+      .default(0)
+      .describe(
+        'Timeout for a single ACP run in milliseconds. Set to 0 to disable the timeout.',
+      ),
+    permissionMode: AcpAgentPermissionModeSchema.default('ask'),
+  })
+  .strict();
+
+export const AcpAgentsConfigSchema = z.record(z.string(), AcpAgentConfigSchema);
+
+export type AcpAgentPermissionMode = z.infer<
+  typeof AcpAgentPermissionModeSchema
+>;
+export type AcpAgentConfig = z.infer<typeof AcpAgentConfigSchema>;
+export type AcpAgentsConfig = z.infer<typeof AcpAgentsConfigSchema>;
 
 function validateCustomOnlyPromptFields(
   overrides: Record<string, z.infer<typeof AgentOverrideConfigSchema>>,
@@ -326,15 +293,12 @@ export const PluginConfigSchema = z
   .object({
     preset: z.string().optional(),
     setDefaultAgent: z.boolean().optional(),
-    scoringEngineVersion: z.enum(['v1', 'v2-shadow', 'v2']).optional(),
-    balanceProviderUsage: z.boolean().optional(),
     autoUpdate: z
       .boolean()
       .optional()
       .describe(
         'Disable automatic installation of plugin updates when false. Defaults to true.',
       ),
-    manualPlan: ManualPlanSchema.optional(),
     presets: z.record(z.string(), PresetSchema).optional(),
     agents: z.record(z.string(), AgentOverrideConfigSchema).optional(),
     disabled_agents: z
@@ -347,6 +311,18 @@ export const PluginConfigSchema = z
           "By default, 'observer' is disabled. Remove it from this list and configure a vision-capable model to enable.",
       ),
     disabled_mcps: z.array(z.string()).optional(),
+    disabled_tools: z
+      .array(z.string())
+      .optional()
+      .describe(
+        'Tool names to disable completely. Disabled tools are not registered with OpenCode and cannot be used by agents.',
+      ),
+    disabled_skills: z
+      .array(z.string())
+      .optional()
+      .describe(
+        'Skill names to disable completely. Disabled skills are not granted to agents, even when referenced by presets or agent overrides.',
+      ),
     // Multiplexer config (new unified config - preferred)
     multiplexer: MultiplexerConfigSchema.optional(),
     // Legacy tmux config (for backward compatibility)
@@ -354,12 +330,11 @@ export const PluginConfigSchema = z
     tmux: TmuxConfigSchema.optional(),
     websearch: WebsearchConfigSchema.optional(),
     interview: InterviewConfigSchema.optional(),
-    sessionManager: SessionManagerConfigSchema.optional(),
-    divoom: DivoomConfigSchema.optional(),
-    todoContinuation: TodoContinuationConfigSchema.optional(),
-    subtask: SubtaskConfigSchema.optional(),
+    backgroundJobs: BackgroundJobsConfigSchema.optional(),
     fallback: FailoverConfigSchema.optional(),
     council: CouncilConfigSchema.optional(),
+    companion: CompanionConfigSchema.optional(),
+    acpAgents: AcpAgentsConfigSchema.optional(),
   })
   .superRefine((value, ctx) => {
     if (value.agents) {

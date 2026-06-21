@@ -56,6 +56,7 @@ GOAL.md
 GOALS.md
 PR-NOTES.md
 REVIEW.md
+!docs/goal.md
 docs/plans
 docs/superpowers
 
@@ -83,6 +84,19 @@ wheels/
 *.egg
 captures/
 
+# Rust companion build artifacts
+companion/target/
+
 # BEGIN oh-my-opencode-slim clonedeps
 .slim/clonedeps/repos/
 # END oh-my-opencode-slim clonedeps
+
+# BEGIN oh-my-opencode-slim worktrees
+.slim/worktrees/
+.slim/worktrees.json
+# END oh-my-opencode-slim worktrees
+
+# Deepwork session artifacts
+.slim/deepwork/
+.codegraph/
+companion/VIDEOS/

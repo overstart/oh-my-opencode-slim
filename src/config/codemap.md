@@ -30,7 +30,7 @@ resolution, and helper APIs used by agents, council, and runtime subsystems.
 3. Validate with schema. Invalid/malformed files are warned and ignored by
    returning `null` for that file.
 4. Merge user+project configs where project takes precedence:
-   nested merges for `agents`, `tmux`, `multiplexer`, `interview`, `sessionManager`,
+   nested merges for `agents`, `tmux`, `multiplexer`, `interview`, `backgroundJobs`,
    `fallback`, `council`.
    top-level arrays/values are overridden.
 5. If `tmux` is enabled and no explicit `multiplexer` is configured,
@@ -65,7 +65,7 @@ resolution, and helper APIs used by agents, council, and runtime subsystems.
   - `CouncilConfigSchema` now normalizes deprecated `master*` fields into
     `_legacyMasterModel` metadata for compatibility
   - supports presets + timeout/retry/execution mode.
-- Fallback config supports per-agent chain arrays and retry/backoff values.
+- Fallback config supports retry/backoff values and toggles.
 
 ## Control flow and dependencies
 

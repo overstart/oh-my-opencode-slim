@@ -8,196 +8,9 @@
     "setDefaultAgent": {
       "type": "boolean"
     },
-    "scoringEngineVersion": {
-      "type": "string",
-      "enum": [
-        "v1",
-        "v2-shadow",
-        "v2"
-      ]
-    },
-    "balanceProviderUsage": {
-      "type": "boolean"
-    },
     "autoUpdate": {
       "description": "Disable automatic installation of plugin updates when false. Defaults to true.",
       "type": "boolean"
-    },
-    "manualPlan": {
-      "type": "object",
-      "properties": {
-        "orchestrator": {
-          "type": "object",
-          "properties": {
-            "primary": {
-              "type": "string",
-              "pattern": "^[^/\\s]+\\/[^\\s]+$"
-            },
-            "fallback1": {
-              "type": "string",
-              "pattern": "^[^/\\s]+\\/[^\\s]+$"
-            },
-            "fallback2": {
-              "type": "string",
-              "pattern": "^[^/\\s]+\\/[^\\s]+$"
-            },
-            "fallback3": {
-              "type": "string",
-              "pattern": "^[^/\\s]+\\/[^\\s]+$"
-            }
-          },
-          "required": [
-            "primary",
-            "fallback1",
-            "fallback2",
-            "fallback3"
-          ]
-        },
-        "oracle": {
-          "type": "object",
-          "properties": {
-            "primary": {
-              "type": "string",
-              "pattern": "^[^/\\s]+\\/[^\\s]+$"
-            },
-            "fallback1": {
-              "type": "string",
-              "pattern": "^[^/\\s]+\\/[^\\s]+$"
-            },
-            "fallback2": {
-              "type": "string",
-              "pattern": "^[^/\\s]+\\/[^\\s]+$"
-            },
-            "fallback3": {
-              "type": "string",
-              "pattern": "^[^/\\s]+\\/[^\\s]+$"
-            }
-          },
-          "required": [
-            "primary",
-            "fallback1",
-            "fallback2",
-            "fallback3"
-          ]
-        },
-        "designer": {
-          "type": "object",
-          "properties": {
-            "primary": {
-              "type": "string",
-              "pattern": "^[^/\\s]+\\/[^\\s]+$"
-            },
-            "fallback1": {
-              "type": "string",
-              "pattern": "^[^/\\s]+\\/[^\\s]+$"
-            },
-            "fallback2": {
-              "type": "string",
-              "pattern": "^[^/\\s]+\\/[^\\s]+$"
-            },
-            "fallback3": {
-              "type": "string",
-              "pattern": "^[^/\\s]+\\/[^\\s]+$"
-            }
-          },
-          "required": [
-            "primary",
-            "fallback1",
-            "fallback2",
-            "fallback3"
-          ]
-        },
-        "explorer": {
-          "type": "object",
-          "properties": {
-            "primary": {
-              "type": "string",
-              "pattern": "^[^/\\s]+\\/[^\\s]+$"
-            },
-            "fallback1": {
-              "type": "string",
-              "pattern": "^[^/\\s]+\\/[^\\s]+$"
-            },
-            "fallback2": {
-              "type": "string",
-              "pattern": "^[^/\\s]+\\/[^\\s]+$"
-            },
-            "fallback3": {
-              "type": "string",
-              "pattern": "^[^/\\s]+\\/[^\\s]+$"
-            }
-          },
-          "required": [
-            "primary",
-            "fallback1",
-            "fallback2",
-            "fallback3"
-          ]
-        },
-        "librarian": {
-          "type": "object",
-          "properties": {
-            "primary": {
-              "type": "string",
-              "pattern": "^[^/\\s]+\\/[^\\s]+$"
-            },
-            "fallback1": {
-              "type": "string",
-              "pattern": "^[^/\\s]+\\/[^\\s]+$"
-            },
-            "fallback2": {
-              "type": "string",
-              "pattern": "^[^/\\s]+\\/[^\\s]+$"
-            },
-            "fallback3": {
-              "type": "string",
-              "pattern": "^[^/\\s]+\\/[^\\s]+$"
-            }
-          },
-          "required": [
-            "primary",
-            "fallback1",
-            "fallback2",
-            "fallback3"
-          ]
-        },
-        "fixer": {
-          "type": "object",
-          "properties": {
-            "primary": {
-              "type": "string",
-              "pattern": "^[^/\\s]+\\/[^\\s]+$"
-            },
-            "fallback1": {
-              "type": "string",
-              "pattern": "^[^/\\s]+\\/[^\\s]+$"
-            },
-            "fallback2": {
-              "type": "string",
-              "pattern": "^[^/\\s]+\\/[^\\s]+$"
-            },
-            "fallback3": {
-              "type": "string",
-              "pattern": "^[^/\\s]+\\/[^\\s]+$"
-            }
-          },
-          "required": [
-            "primary",
-            "fallback1",
-            "fallback2",
-            "fallback3"
-          ]
-        }
-      },
-      "required": [
-        "orchestrator",
-        "oracle",
-        "designer",
-        "explorer",
-        "librarian",
-        "fixer"
-      ],
-      "additionalProperties": false
     },
     "presets": {
       "type": "object",
@@ -384,6 +197,20 @@
         "type": "string"
       }
     },
+    "disabled_tools": {
+      "description": "Tool names to disable completely. Disabled tools are not registered with OpenCode and cannot be used by agents.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "disabled_skills": {
+      "description": "Skill names to disable completely. Disabled skills are not granted to agents, even when referenced by presets or agent overrides.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "multiplexer": {
       "type": "object",
       "properties": {
@@ -494,7 +321,7 @@
         }
       }
     },
-    "sessionManager": {
+    "backgroundJobs": {
       "type": "object",
       "properties": {
         "maxSessionsPerAgent": {
@@ -517,107 +344,6 @@
         }
       }
     },
-    "divoom": {
-      "type": "object",
-      "properties": {
-        "enabled": {
-          "default": false,
-          "type": "boolean"
-        },
-        "python": {
-          "default": "/Applications/Divoom MiniToo.app/Contents/Resources/.venv/bin/python",
-          "type": "string",
-          "minLength": 1
-        },
-        "script": {
-          "default": "/Applications/Divoom MiniToo.app/Contents/Resources/tools/divoom_send.py",
-          "type": "string",
-          "minLength": 1
-        },
-        "size": {
-          "default": 128,
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 1024
-        },
-        "fps": {
-          "default": 8,
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 60
-        },
-        "speed": {
-          "default": 125,
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 10000
-        },
-        "maxFrames": {
-          "default": 24,
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 500
-        },
-        "posterizeBits": {
-          "default": 3,
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 8
-        },
-        "gifs": {
-          "type": "object",
-          "propertyNames": {
-            "type": "string"
-          },
-          "additionalProperties": {
-            "type": "string",
-            "minLength": 1
-          }
-        }
-      }
-    },
-    "todoContinuation": {
-      "type": "object",
-      "properties": {
-        "maxContinuations": {
-          "default": 5,
-          "description": "Maximum consecutive auto-continuations before stopping to ask user",
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 50
-        },
-        "cooldownMs": {
-          "default": 3000,
-          "description": "Delay in ms before auto-continuing (gives user time to abort)",
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 30000
-        },
-        "autoEnable": {
-          "default": false,
-          "description": "Automatically enable auto-continue when the orchestrator session has enough todos",
-          "type": "boolean"
-        },
-        "autoEnableThreshold": {
-          "default": 4,
-          "description": "Number of todos that triggers auto-enable (only used when autoEnable is true)",
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 50
-        }
-      }
-    },
-    "subtask": {
-      "type": "object",
-      "properties": {
-        "timeoutMs": {
-          "description": "Subtask worker timeout in ms. 0 disables the timeout. Defaults to 300000 (5 minutes).",
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 86400000
-        }
-      }
-    },
     "fallback": {
       "type": "object",
       "properties": {
@@ -635,67 +361,13 @@
           "type": "number",
           "minimum": 0
         },
-        "chains": {
-          "default": {},
-          "type": "object",
-          "properties": {
-            "orchestrator": {
-              "minItems": 1,
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            "oracle": {
-              "minItems": 1,
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            "designer": {
-              "minItems": 1,
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            "explorer": {
-              "minItems": 1,
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            "librarian": {
-              "minItems": 1,
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            "fixer": {
-              "minItems": 1,
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            }
-          },
-          "additionalProperties": {
-            "minItems": 1,
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
         "retry_on_empty": {
           "default": true,
           "description": "When true (default), empty provider responses are treated as failures, triggering fallback/retry. Set to false to treat them as successes.",
           "type": "boolean"
         }
-      }
+      },
+      "additionalProperties": false
     },
     "council": {
       "type": "object",
@@ -746,17 +418,138 @@
         },
         "master": {
           "description": "DEPRECATED — ignored. Council agent synthesizes directly."
-        },
-        "master_timeout": {
-          "description": "DEPRECATED — ignored. Use \"timeout\" instead."
-        },
-        "master_fallback": {
-          "description": "DEPRECATED — ignored. No separate master session."
         }
       },
       "required": [
         "presets"
       ]
+    },
+    "companion": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "binaryPath": {
+          "description": "Path to a custom companion binary to launch.",
+          "type": "string",
+          "minLength": 1
+        },
+        "position": {
+          "type": "string",
+          "enum": [
+            "bottom-right",
+            "bottom-left",
+            "top-right",
+            "top-left"
+          ]
+        },
+        "size": {
+          "type": "string",
+          "enum": [
+            "small",
+            "medium",
+            "large"
+          ]
+        },
+        "gifPack": {
+          "description": "Bundled companion animation pack to use.",
+          "type": "string",
+          "enum": [
+            "default"
+          ]
+        },
+        "loopStyle": {
+          "description": "Companion animation playback style: classic loops or smooth ping-pong playback.",
+          "type": "string",
+          "enum": [
+            "classic",
+            "smooth"
+          ]
+        },
+        "speed": {
+          "description": "Companion animation playback speed multiplier. Defaults to 1.",
+          "type": "number",
+          "minimum": 0.25,
+          "maximum": 4
+        },
+        "debug": {
+          "description": "Enable verbose native companion debug logs.",
+          "type": "boolean"
+        }
+      }
+    },
+    "acpAgents": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string",
+            "minLength": 1
+          },
+          "args": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "env": {
+            "default": {},
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "cwd": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1
+          },
+          "prompt": {
+            "type": "string",
+            "minLength": 1
+          },
+          "orchestratorPrompt": {
+            "type": "string",
+            "minLength": 1
+          },
+          "wrapperModel": {
+            "type": "string",
+            "pattern": "^[^/\\s]+\\/[^\\s]+$"
+          },
+          "timeoutMs": {
+            "default": 0,
+            "description": "Timeout for a single ACP run in milliseconds. Set to 0 to disable the timeout.",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          },
+          "permissionMode": {
+            "default": "ask",
+            "type": "string",
+            "enum": [
+              "ask",
+              "allow",
+              "reject"
+            ]
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "additionalProperties": false
+      }
     }
   },
   "title": "oh-my-opencode-slim",

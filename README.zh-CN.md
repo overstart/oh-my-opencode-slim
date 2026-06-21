@@ -1,13 +1,13 @@
 <div align="center">
   <a href="https://github.com/alvinunreal/oh-my-opencode-slim/stargazers">
-    <img src="img/v2beta.webp" alt="V2 Beta Release" style="border-radius: 10px;">
+    <img src="img/v2.webp" alt="oh-my-opencode-slim V2 Release" style="border-radius: 10px;">
   </a>
-  <h3>✨ V2 Beta 版本：后台编排已上线 ✨</h3>
-  <p><i>编排者（Orchestrator）现在可在后台调度专家智能体，<br>同时 <code>/deepwork</code> 可以将宏大目标转化为基于文件的具体计划。<br>Beta 测试人员：请在 Telegram 上与我们分享您的反馈。</i></p>
+  <h3>✨ oh-my-opencode-slim ✨</h3>
 
-  <p><b>开放式多智能体套件</b> · 混合任意模型 · 自动委派任务</p>
+  <p><i>七位神圣存在从代码黎明中现身，各自是不朽的工艺大师，<br>等待你的号令，将混沌锻造成秩序，并构建曾被认为不可能之物。</i></p>
 
-  <p><sub>由 <b>Boring Dystopia Development</b> 倾情打造</sub></p>
+  <p><b>Opencode 多智能体套件</b> · 混合任意模型 · 自动委派任务</p>
+  <p><sub>由 <b>Boring Dystopia Development</b> 打造</sub></p>
   <p>
     <a href="https://boringdystopia.ai/"><img src="https://img.shields.io/badge/boringdystopia.ai-111111?style=for-the-badge&logo=vercel&logoColor=white" alt="boringdystopia.ai"></a>&nbsp;
     <a href="https://x.com/alvinunreal"><img src="https://img.shields.io/badge/X-@alvinunreal-000000?style=for-the-badge&logo=x&logoColor=white" alt="X @alvinunreal"></a>&nbsp;
@@ -17,6 +17,9 @@
   <p>
     <a href="README.md">English</a> | <b>简体中文</b> | <a href="README.ja-JP.md">日本語</a> | <a href="README.ko-KR.md">한국어</a>
   </p>
+
+  <p><sub>✦ ✦ ✦</sub></p>
+
 </div>
 
 ---
@@ -27,7 +30,44 @@ oh-my-opencode-slim 是一个用于 OpenCode 的智能体编排插件。它内�
 
 其核心理念非常简单：与其强迫单个模型做所有事情，本插件会将工作的每个部分路由到最适合它的智能体，从而平衡**质量、速度和成本**。
 
-要了解智能体本身，请参阅**[认识众神殿](#认识众神殿)**。如需了解完整的特性集，请参阅下方的**[特性与工作流](#特性与工作流)**。
+要了解智能体本身，请参阅 **[认识众神殿](#meet-the-pantheon)**。如需了解完整特性集，请参阅下方的 **[特性与工作流](#features-and-workflows)**。
+
+### 用 LazySkills 管理智能体技能
+
+<p align="center">
+  <a href="https://github.com/alvinunreal/lazyskills">
+    <img src="img/lazyskills-wide.svg" alt="LazySkills" width="720">
+  </a>
+</p>
+
+**[LazySkills](https://github.com/alvinunreal/lazyskills)** 是一个用于管理智能体技能的终端 UI。它让你可以在一个地方查看已安装的技能、哪些智能体可以使用每个技能、为什么可见性可能失效，以及接下来可以安全执行哪些操作。
+
+<p align="center">
+  <a href="https://github.com/alvinunreal/lazyskills"><b>探索 LazySkills →</b></a>
+</p>
+
+### 用户怎么说
+
+> “任务管理轻松从 5/10 提升到了 8-9/10。Orchestrator 会派出
+> Fixer 和 Explorer，而我仍然可以在同一个会话里继续和 Orchestrator
+> 对话与规划。现在整个体验顺滑多了。”
+>
+> \- `vipor_idk`
+
+> “我已经为了这个 omo-slim beta 版本抛弃了所有自己的 harness，
+> 也完全没有回头或怀念。做得很好，在我看来方向都非常正确。”
+>
+> \- `stephanschielke`
+
+> “我很喜欢 omo-slim，已经无法想象不用它来运行 opencode。
+> 我喜欢可以拼出一个由各种模型组成的 Frankenstein……
+> 这让整个设置变成了一头猛兽。”
+>
+> \- `Capital-One3039`
+
+> “它显著改善了我的工作流……现在运行得非常顺畅，我很喜欢。”
+>
+> \- `xenstar1`
 
 ### 快速开始
 
@@ -43,21 +83,11 @@ Install and configure oh-my-opencode-slim: https://raw.githubusercontent.com/alv
 bunx oh-my-opencode-slim@latest install
 ```
 
-### V2 后台编排 Beta 版
-
-V2 将编排者（Orchestrator）从默认的执行工作器转变为调度器：
-它规划工作、将专家作为后台任务分发、轮询其状态，并在继续执行之前核对结果。这需要 OpenCode 原生的后台子智能体支持，因此 Beta 版用户必须在启用实验性标志的情况下启动 OpenCode。
-
-```bash
-# 现有用户：先清除 OpenCode 缓存的插件包，确保重新拉取 beta 版本。
-rm -rf ~/.cache/opencode/packages/oh-my-opencode-slim
-bunx oh-my-opencode-slim@beta install
-OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=1 opencode
-```
-
 ### 入门指南
 
-安装程序会同时生成 OpenAI 和 OpenCode Go 的预设（Preset），默认启用 OpenAI 预设。OpenAI 使用 `openai/gpt-5.5` 作为具备高级判断力智能体的模型，并使用 `openai/gpt-5.4-mini` 作为响应更快速、针对具体任务智能体的模型。若要在安装过程中激活 OpenCode Go 预设，请运行 `bunx oh-my-opencode-slim@latest install --preset=opencode-go` 或在安装后修改 `~/.config/opencode/oh-my-opencode-slim.json` 文件中的默认预设名称。
+安装程序会同时生成 OpenAI 和 OpenCode Go 预设，默认启用 OpenAI。
+
+要在安装期间启用 OpenCode Go，请运行 `bunx oh-my-opencode-slim@latest install --preset=opencode-go`，或在安装后修改 `~/.config/opencode/oh-my-opencode-slim.json` 中的默认预设名称。
 
 然后：
 
@@ -76,7 +106,10 @@ OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=1 opencode
 4. **为您要分配的每个智能体更新模型配置**
 
 > [!TIP]
-> **强烈建议**了解自动委派（Automatic Delegation）的工作原理。**[编排者提示词 (Orchestrator prompt)](https://github.com/alvinunreal/oh-my-opencode-slim/blob/master/src/agents/orchestrator.ts#L28)** 包含了委派规则、专家路由逻辑，以及主智能体何时将工作转交给子智能体的阈值。您始终可以通过以下方式手动委派任务：`@智能体名称 <任务内容>`
+> **建议**了解后台编排的工作原理。**[编排者提示词 (Orchestrator prompt)](https://github.com/alvinunreal/oh-my-opencode-slim/blob/master/src/agents/orchestrator.ts#L28)** 包含调度规则、专家路由逻辑，以及何时应把工作分配给后台智能体的阈值。您始终可以通过以下方式手动委派任务：`@智能体名称 <任务内容>`
+
+> [!TIP]
+> 由于后台智能体现在是默认工作流，**强烈建议**启用并配置 **[Multiplexer Integration](docs/multiplexer-integration.md)**。它会自动在专用的 Tmux 或 Zellij 窗格中打开每个智能体，让您在 Orchestrator 继续协调会话时，实时跟进各个专家智能体的工作。
 
 默认生成的配置包含 `openai` 和 `opencode-go` 两个预设：
 
@@ -86,18 +119,18 @@ OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=1 opencode
   "preset": "openai",
   "presets": {
     "openai": {
-      "orchestrator": { "model": "openai/gpt-5.5", "skills": ["*"], "mcps": ["*", "!context7"] },
+      "orchestrator": { "model": "openai/gpt-5.5", "variant": "medium", "skills": ["*"], "mcps": ["*", "!context7"] },
       "oracle": { "model": "openai/gpt-5.5", "variant": "high", "skills": ["simplify"], "mcps": [] },
-      "librarian": { "model": "openai/gpt-5.4-mini", "variant": "low", "skills": [], "mcps": ["websearch", "context7", "grep_app"] },
+      "librarian": { "model": "openai/gpt-5.4-mini", "variant": "low", "skills": [], "mcps": ["websearch", "context7", "gh_grep"] },
       "explorer": { "model": "openai/gpt-5.4-mini", "variant": "low", "skills": [], "mcps": [] },
       "designer": { "model": "openai/gpt-5.4-mini", "variant": "medium", "skills": [], "mcps": [] },
-      "fixer": { "model": "openai/gpt-5.4-mini", "variant": "low", "skills": [], "mcps": [] }
+      "fixer": { "model": "openai/gpt-5.5", "variant": "low", "skills": [], "mcps": [] }
     },
     "opencode-go": {
       "orchestrator": { "model": "opencode-go/glm-5.1", "skills": [ "*" ], "mcps": [ "*", "!context7" ] },
       "oracle": { "model": "opencode-go/deepseek-v4-pro", "variant": "max", "skills": ["simplify"], "mcps": [] },
       "council": { "model": "opencode-go/deepseek-v4-pro", "variant": "high", "skills": [], "mcps": [] },
-      "librarian": { "model": "opencode-go/minimax-m2.7", "skills": [], "mcps": [ "websearch", "context7", "grep_app" ] },
+      "librarian": { "model": "opencode-go/minimax-m2.7", "skills": [], "mcps": [ "websearch", "context7", "gh_grep" ] },
       "explorer": { "model": "opencode-go/minimax-m2.7", "skills": [], "mcps": [] },
       "designer": { "model": "opencode-go/kimi-k2.6", "variant": "medium", "skills": [], "mcps": [] },
       "fixer": { "model": "opencode-go/deepseek-v4-flash", "variant": "high", "skills": [], "mcps": [] }
@@ -109,10 +142,6 @@ OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=1 opencode
 ### 针对其他服务商
 
 要使用自定义模型提供商或混合提供商配置，请参阅 **[配置指南 (docs/configuration.md)](docs/configuration.md)** 以获取完整参考。如果您需要即插即用的起点，请查看 **[作者的预设配置 (docs/authors-preset.md)](docs/authors-preset.md)** 和 **[$30 预设配置 (docs/thirty-dollars-preset.md)](docs/thirty-dollars-preset.md)**（`$30` 预设是性价比最高的便宜配置方案）。
-
-配置指南还介绍了如何通过 `agents.<name>` 定义自定义子智能体，您可以在其中为委派定义普通 `prompt` 和 `orchestratorPrompt` 块。
-
-有关模型推荐，请参阅下方列出的每个智能体推荐模型。
 
 ### ✅ 验证您的安装
 
@@ -137,7 +166,92 @@ ping all agents
 
 ---
 
-<a id="认识众神殿"></a>
+### V2 新功能
+
+V2 将 oh-my-opencode-slim 变成了以调度器为核心的多智能体工作流系统。Orchestrator 专注于规划、委派、结果整合与验证，而专家智能体在各自的工作通道中完成任务。
+
+- **[后台智能体](#后台智能体)** — Orchestrator 现在会把专家作为后台任务派发，跟踪任务/会话 ID，等待完成事件，并在继续之前整合结果。
+- **[Companion](#companion)** — 可选的浮动桌面窗口会显示当前活跃的智能体，包括并行运行的后台专家。
+- **[Deepwork](#deepwork)** — 面向大型、多文件、高风险或分阶段编码工作的结构化工作流，使用持久化计划文件和 Oracle 评审关卡。
+- **[Reflect](#reflect)** — 回顾重复出现的工作模式，并建议可复用的 skill、智能体、命令、配置规则、提示词规则或项目 playbook。
+- **[Worktrees](#worktrees)** — 将 Git worktree 作为隔离编码通道管理，并为复杂、高风险或并行任务提供安全协议。
+- **[oh-my-opencode-slim Skill](#oh-my-opencode-slim-skill)** — 随包提供的配置技能，可安全调优模型、提示词、自定义智能体、MCP 访问、预设和插件行为。
+
+#### 后台智能体
+
+V2 将后台专家作为默认心智模型：Orchestrator 规划工作图，启动合适的智能体，避免重叠的写入所有权，并在处理终端任务结果后再继续行动。
+
+完整调度模型见 **[后台编排](docs/v2-background-orchestration.md)**。
+
+#### Companion
+
+可选 Companion 是一个用于展示实时智能体活动的浮动桌面状态窗口。它显示当前会话状态和活跃智能体，让后台工作一目了然。
+
+<div align="center">
+  <img src="img/companion.gif" alt="Companion showing active agents" width="600">
+  <p><i>左下角视觉伴侣。</i></p>
+</div>
+
+交互式安装期间，安装器会询问是否启用 Companion，并默认选择 `yes`。自动化安装可显式启用：
+
+```bash
+bunx oh-my-opencode-slim@latest install --companion=yes
+```
+
+配置、位置、尺寸和安装详情见 **[Companion](docs/companion.md)**。
+
+#### Deepwork
+
+Deepwork 适用于重型编码会话：大范围重构、多阶段功能、高风险架构变更，或需要持久计划的工作。它会创建本地 markdown 进度文件，使用 Oracle 评审关卡，并保持实现阶段结构化。
+
+启动方式：
+
+```text
+/deepwork <heavy coding task>
+```
+
+何时使用以及工作流如何运行，请参阅 **[Skills](docs/skills.md#deepwork)**。
+
+#### Reflect
+
+Reflect 帮助 Orchestrator 从重复出现的工作流摩擦中学习。它会回顾近期工作和现有资产，然后建议最小且有用的改进：skill、自定义智能体、命令、配置规则、提示词规则、MCP 权限变更或项目 playbook。如果证据不足，它应建议什么都不创建。
+
+直接使用：
+
+```text
+/reflect
+/reflect release workflow and checks
+```
+
+也可以使用自然语言提示：
+
+```text
+reflect on my recent workflows
+find repeated work worth turning into reusable instructions
+```
+
+完整工作流和安全规则见 **[Skills](docs/skills.md#reflect)**。
+
+#### Worktrees
+
+Worktrees 将 Git worktree 作为安全、隔离的编码通道管理，默认位于 `.slim/worktrees/<slug>/`。Orchestrator 负责这些通道的生命周期，在 `.slim/worktrees.json` 中跟踪状态，在通道内调度专家智能体，并在修改 Git 状态前要求明确确认。
+
+安全协议见 **[Skills](docs/skills.md#worktrees)**。
+
+#### oh-my-opencode-slim Skill
+
+内置的 `oh-my-opencode-slim` skill 可帮助 Orchestrator 配置和改进插件本身。可用于模型调优、自定义智能体、提示词覆盖、skill/MCP 权限、预设、可选智能体、后台编排以及反复出现的工作流摩擦。
+
+<div align="center">
+  <img src="img/oh-my-opencode-skill.png" alt="oh-my-opencode-slim skill in use" width="600">
+  <p><i>让内置技能帮助调优和改进你的智能体设置。</i></p>
+</div>
+
+示例和安全规则见 **[Skills](docs/skills.md#oh-my-opencode-slim)**。
+
+---
+
+<a id="meet-the-pantheon"></a>
 
 ## 🏛️ 认识众神殿
 
@@ -165,12 +279,12 @@ ping all agents
   </tr>
   <tr>
     <td colspan="2">
-      <b>默认模型：</b> <code>openai/gpt-5.5</code>
+      <b>默认模型：</b> <code>openai/gpt-5.5 (medium)</code>
     </td>
   </tr>
   <tr>
     <td colspan="2">
-      <b>推荐模型：</b> <code>openai/gpt-5.5</code> <code>anthropic/claude-opus-4.6</code>
+      <b>推荐模型：</b> <code>openai/gpt-5.5 (medium)</code> <code>anthropic/claude-opus-4.6</code>
     </td>
   </tr>
   <tr>
@@ -211,12 +325,12 @@ ping all agents
   </tr>
   <tr>
     <td colspan="2">
-      <b>推荐模型：</b> <code>cerebras/zai-glm-4.7</code> <code>fireworks-ai/accounts/fireworks/routers/kimi-k2p5-turbo</code> <code>openai/gpt-5.4-mini</code>
+      <b>推荐模型：</b> <i>无</i>
     </td>
   </tr>
   <tr>
     <td colspan="2">
-      <b>模型选用指南：</b> 选择快速、低成本的模型。Explorer 处理宽泛的侦察工作，因此速度和效率通常比使用最强推理模型更重要。
+      <b>模型选用指南：</b> 选择快速、低成本的模型。Explorer 处理宽泛的侦察工作，因此速度 and 效率通常比使用最强推理模型更重要。
     </td>
   </tr>
 </table>
@@ -342,7 +456,7 @@ ping all agents
   </tr>
   <tr>
     <td colspan="2">
-      <b>推荐模型：</b> <code>cerebras/zai-glm-4.7</code> <code>fireworks-ai/accounts/fireworks/routers/kimi-k2p5-turbo</code> <code>openai/gpt-5.4-mini</code>
+      <b>推荐模型：</b> <i>无</i>
     </td>
   </tr>
   <tr>
@@ -419,12 +533,12 @@ ping all agents
   </tr>
   <tr>
     <td colspan="2">
-      <b>默认模型：</b> <code>openai/gpt-5.4-mini</code>
+      <b>默认模型：</b> <code>openai/gpt-5.5 (low)</code>
     </td>
   </tr>
   <tr>
     <td colspan="2">
-      <b>推荐模型：</b> <code>cerebras/zai-glm-4.7</code> <code>fireworks-ai/accounts/fireworks/routers/kimi-k2p5-turbo</code> <code>openai/gpt-5.4-mini</code>
+      <b>推荐模型：</b> <code>openai/gpt-5.5 (low)</code>
     </td>
   </tr>
   <tr>
@@ -480,50 +594,44 @@ ping all agents
 
 ## 📚 文档
 
-请将本节用作引导地图：从安装开始，然后根据您的需求跳转到功能、配置或示例预设。
+请将本节作为地图：先从安装开始，再根据需要跳转到特性、配置或示例预设。
 
-### 🚀 从这里开始
-
-| 文档 | 涵盖内容 |
-|-----|----------------|
-| **[安装指南 (docs/installation.md)](docs/installation.md)** | 安装插件、使用 CLI 标志、重置配置以及排查安装故障 |
-
-<a id="特性与工作流"></a>
+<a id="features-and-workflows"></a>
 
 ### ✨ 特性与工作流
 
 | 文档 | 涵盖内容 |
 |-----|----------------|
-| **[Council (议会) (docs/council.md)](docs/council.md)** | 使用 `@council` 并行运行多个模型并合成单一答案 |
-| **[多路复用器集成 (docs/multiplexer-integration.md)](docs/multiplexer-integration.md)** | 在 Tmux 或 Zellij 窗格中实时观看智能体的工作过程 |
-| **[会话管理 (docs/session-management.md)](docs/session-management.md)** | 使用短别名复用最近的子智能体会话，而不是重新开始 |
-| **[会话目标 (docs/session-goal.md)](docs/session-goal.md)** | 用 `/goal` 固定会话目标，以确保待办事项、委派和验证保持一致 |
-| **[待办事项持续执行 (docs/todo-continuation.md)](docs/todo-continuation.md)** | 具备冷却时间和安全检查的编排者会话自动持续执行 |
-| **[运行时预设切换 (docs/preset-switching.md)](docs/preset-switching.md)** | 在运行时使用 `/preset` 切换智能体模型预设 |
-| **[自定义智能体 (docs/configuration.md#custom-agents)](docs/configuration.md#custom-agents)** | 自定义专家智能体：配置独特的提示词、模型、MCP 权限和编排者委派规则 |
-| **[子任务 (docs/subtask.md)](docs/subtask.md)** | 使用 `/subtask` 运行受限的子工作器，并将结构化总结返回到主会话 |
-| **[代码地图 (Codemap) (docs/codemap.md)](docs/codemap.md)** | 生成层级代码地图，快速理解大型代码库 |
-| **[克隆依赖 (Clonedeps) (docs/clonedeps.md)](docs/clonedeps.md)** | 将选定的依赖源码克隆到被忽略的本地工作区中以供检查 |
-| **[访谈式生成 (Interview) (docs/interview.md)](docs/interview.md)** | 通过基于浏览器的问答流，将粗糙的想法转变为结构化的 Markdown 规范文档 |
-| **[Divoom 显示屏 (docs/divoom.md)](docs/divoom.md)** | 将编排者与专家智能体的活动镜像显示到 Divoom MiniToo 蓝牙显示屏上 |
+| **[Council](docs/council.md)** | 使用 `@council` 并行运行多个模型并合成单一答案 |
+| **[自定义智能体](docs/configuration.md#custom-agents)** | 使用自定义提示词、模型、MCP 访问和 Orchestrator 委派规则定义自己的专家 |
+| **[ACP Agents](docs/acp-agents.md)** | 将 Claude Code ACP 或 Gemini ACP 等外部 ACP 兼容智能体连接为可委派子智能体 |
+| **[多路复用器集成](docs/multiplexer-integration.md)** | 在 Tmux 或 Zellij 窗格中实时观看智能体工作 |
+| **[Codemap](docs/codemap.md)** | 生成层级代码地图，更快理解大型代码库 |
+| **[Clonedeps](docs/clonedeps.md)** | 将选定的依赖源码克隆到被忽略的本地工作区中以供检查 |
+| **[Worktrees](docs/worktrees.md)** | 使用 `.slim/worktrees/` 通道进行隔离的并行或高风险编码工作 |
+| **[预设切换](docs/preset-switching.md)** | 使用 `/preset` 在运行时切换智能体模型预设 |
+| **[Interview](docs/interview.md)** | 通过基于浏览器的问答流程，将粗略想法转成结构化 markdown 规格 |
+| **[Companion](docs/companion.md)** | 用于解析、帮助和类型信息的浮动窗口 companion |
 
 ### ⚙️ 配置与参考
 
 | 文档 | 涵盖内容 |
 |-----|----------------|
-| **[配置指南 (docs/configuration.md)](docs/configuration.md)** | 配置文件位置、JSONC 支持、提示词覆盖以及完整的选项参考 |
-| **[维护者指南 (docs/maintainers.md)](docs/maintainers.md)** | 问题分流规则、标签含义、支持路由以及仓库维护工作流 |
-| **[技能列表 (Skills) (docs/skills.md)](docs/skills.md)** | 捆绑的技能，如 `simplify`、`codemap` 和 `clonedeps` |
-| **[MCP 服务 (docs/mcps.md)](docs/mcps.md)** | `websearch`、`context7`、`grep_app` 以及每个智能体的 MCP 权限工作机制 |
-| **[工具说明 (docs/tools.md)](docs/tools.md)** | 内置工具能力，如 `webfetch`、LSP 工具、代码搜索和格式化工具 |
+| **[安装指南](docs/installation.md)** | 安装插件、使用 CLI 标志、重置配置并排查设置问题 |
+| **[配置](docs/configuration.md)** | 配置文件位置、JSONC 支持、提示词覆盖和完整选项参考 |
+| **[后台编排](docs/background-orchestration.md)** | 围绕原生后台子智能体构建的调度器优先 Orchestrator 模型 |
+| **[维护者指南](docs/maintainers.md)** | issue 分流规则、标签含义、支持路由和仓库维护工作流 |
+| **[Skills](docs/skills.md)** | `simplify`、`codemap`、`clonedeps`、`deepwork`、`reflect`、`worktrees` 和 `oh-my-opencode-slim` 等捆绑技能 |
+| **[MCPs](docs/mcps.md)** | `websearch`、`context7`、`gh_grep` 以及每个智能体的 MCP 权限机制 |
+| **[Tools](docs/tools.md)** | `webfetch`、LSP 工具、代码搜索和格式化工具等内置工具能力 |
 
 ### 💡 预设配置
 
 | 文档 | 涵盖内容 |
 |-----|----------------|
-| **[作者的预设配置 (docs/authors-preset.md)](docs/authors-preset.md)** | 作者日常使用的混合服务商配置方案 |
-| **[$30 预设配置 (docs/thirty-dollars-preset.md)](docs/thirty-dollars-preset.md)** | 每月约 30 美元的预算型混合服务商配置方案 |
-| **[OpenCode Go 预设 (docs/opencode-go-preset.md)](docs/opencode-go-preset.md)** | 安装程序生成的捆绑 `opencode-go` 预设配置 |
+| **[作者的预设配置](docs/authors-preset.md)** | 作者日常使用的混合服务商配置方案 |
+| **[$30 预设配置](docs/thirty-dollars-preset.md)** | 每月约 30 美元的预算型混合服务商配置方案 |
+| **[OpenCode Go 预设](docs/opencode-go-preset.md)** | 安装程序生成的捆绑 `opencode-go` 预设 |
 
 ---
 
@@ -534,7 +642,7 @@ ping all agents
   <p><sub>每一次合并的贡献都在这片领域留下了印记。</sub></p>
 
   <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
-[![All Contributors](https://img.shields.io/badge/all_contributors-50-orange.svg?style=flat-square)](#contributors-)
+[![All Contributors](https://img.shields.io/badge/all_contributors-59-orange.svg?style=flat-square)](#contributors-)
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
 </div>
 
@@ -612,9 +720,21 @@ ping all agents
     <tr>
       <td align="center" valign="top" width="16.66%"><a href="https://github.com/zackslash"><img src="https://avatars.githubusercontent.com/u/2040617?v=4?s=100" width="100px;" alt="Luke Hines"/><br /><sub><b>Luke Hines</b></sub></a><br /><a href="https://github.com/alvinunreal/oh-my-opencode-slim/commits?author=zackslash" title="Code">💻</a></td>
       <td align="center" valign="top" width="16.66%"><a href="https://github.com/andrewylies"><img src="https://avatars.githubusercontent.com/u/103019336?v=4?s=100" width="100px;" alt="m.seomoon"/><br /><sub><b>m.seomoon</b></sub></a><br /><a href="https://github.com/alvinunreal/oh-my-opencode-slim/commits?author=andrewylies" title="Code">💻</a></td>
+      <td align="center" valign="top" width="16.66%"><a href="https://github.com/yolo2h"><img src="https://avatars.githubusercontent.com/u/10754850?v=4?s=100" width="100px;" alt="Yolo"/><br /><sub><b>Yolo</b></sub></a><br /><a href="https://github.com/alvinunreal/oh-my-opencode-slim/commits?author=yolo2h" title="Code">💻</a></td>
+      <td align="center" valign="top" width="16.66%"><a href="https://github.com/xinxingi"><img src="https://avatars.githubusercontent.com/u/49302071?v=4?s=100" width="100px;" alt="XinXing"/><br /><sub><b>XinXing</b></sub></a><br /><a href="https://github.com/alvinunreal/oh-my-opencode-slim/commits?author=xinxingi" title="Code">💻</a></td>
+      <td align="center" valign="top" width="16.66%"><a href="https://github.com/eltociear"><img src="https://avatars.githubusercontent.com/u/22633385?v=4?s=100" width="100px;" alt="Ikko Eltociear Ashimine"/><br /><sub><b>Ikko Eltociear Ashimine</b></sub></a><br /><a href="https://github.com/alvinunreal/oh-my-opencode-slim/commits?author=eltociear" title="Code">💻</a></td>
+      <td align="center" valign="top" width="16.66%"><a href="https://github.com/dev-wantap"><img src="https://avatars.githubusercontent.com/u/69743540?v=4?s=100" width="100px;" alt="GWANWOO KIM"/><br /><sub><b>GWANWOO KIM</b></sub></a><br /><a href="https://github.com/alvinunreal/oh-my-opencode-slim/commits?author=dev-wantap" title="Code">💻</a></td>
+    </tr>
+    <tr>
+      <td align="center" valign="top" width="16.66%"><a href="https://github.com/OmerFarukOruc"><img src="https://avatars.githubusercontent.com/u/7347742?v=4?s=100" width="100px;" alt="Omer Faruk Oruc"/><br /><sub><b>Omer Faruk Oruc</b></sub></a><br /><a href="https://github.com/alvinunreal/oh-my-opencode-slim/commits?author=OmerFarukOruc" title="Code">💻</a></td>
+      <td align="center" valign="top" width="16.66%"><a href="https://khallaf.uk/"><img src="https://avatars.githubusercontent.com/u/51155980?v=4?s=100" width="100px;" alt="Omar Mohamed Khallaf"/><br /><sub><b>Omar Mohamed Khallaf</b></sub></a><br /><a href="https://github.com/alvinunreal/oh-my-opencode-slim/commits?author=omar-mohamed-khallaf" title="Code">💻</a></td>
+      <td align="center" valign="top" width="16.66%"><a href="https://github.com/Qesire"><img src="https://avatars.githubusercontent.com/u/102657430?v=4?s=100" width="100px;" alt="Knowingthesea_Qesire"/><br /><sub><b>Knowingthesea_Qesire</b></sub></a><br /><a href="https://github.com/alvinunreal/oh-my-opencode-slim/commits?author=Qesire" title="Code">💻</a></td>
+      <td align="center" valign="top" width="16.66%"><a href="http://www.flyinghail.net/"><img src="https://avatars.githubusercontent.com/u/157430?v=4?s=100" width="100px;" alt="FENG Hao"/><br /><sub><b>FENG Hao</b></sub></a><br /><a href="https://github.com/alvinunreal/oh-my-opencode-slim/commits?author=flyinghail" title="Code">💻</a></td>
+      <td align="center" valign="top" width="16.66%"><a href="https://github.com/smatheusblu"><img src="https://avatars.githubusercontent.com/u/5666794?v=4?s=100" width="100px;" alt="Matheus Nogueira Silveira"/><br /><sub><b>Matheus Nogueira Silveira</b></sub></a><br /><a href="https://github.com/alvinunreal/oh-my-opencode-slim/commits?author=smatheusblu" title="Code">💻</a></td>
     </tr>
   </tbody>
 </table>
+
 <!-- markdownlint-restore -->
 <!-- prettier-ignore-end -->
 

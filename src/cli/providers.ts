@@ -15,12 +15,12 @@ export const GENERATED_PRESETS = [
 // Model mappings by provider/preset.
 export const MODEL_MAPPINGS = {
   openai: {
-    orchestrator: { model: 'openai/gpt-5.5' },
+    orchestrator: { model: 'openai/gpt-5.5', variant: 'medium' },
     oracle: { model: 'openai/gpt-5.5', variant: 'high' },
     librarian: { model: 'openai/gpt-5.4-mini', variant: 'low' },
     explorer: { model: 'openai/gpt-5.4-mini', variant: 'low' },
     designer: { model: 'openai/gpt-5.4-mini', variant: 'medium' },
-    fixer: { model: 'openai/gpt-5.4-mini', variant: 'low' },
+    fixer: { model: 'openai/gpt-5.5', variant: 'low' },
   },
   kimi: {
     orchestrator: { model: 'kimi-for-coding/k2p5' },
@@ -165,6 +165,18 @@ export function generateLiteConfig(
       enabled: true,
       layout: 'main-vertical',
       main_pane_size: 60,
+    };
+  }
+
+  if (installConfig.companion === 'yes') {
+    config.companion = {
+      enabled: true,
+      position: 'bottom-right',
+      size: 'medium',
+      gifPack: 'default',
+      loopStyle: 'classic',
+      speed: 1,
+      debug: false,
     };
   }
 

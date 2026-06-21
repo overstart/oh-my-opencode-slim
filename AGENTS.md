@@ -100,6 +100,12 @@ oh-my-opencode-slim/
 5. Run `bun test` to verify tests pass
 6. Commit changes
 
+## Release Workflow
+
+For plugin or Companion releases, follow `docs/release.md`. It documents the
+required diff inspection, companion asset workflow, GitHub release creation,
+tagging, verification, and npm publish order.
+
 ## Tmux Session Lifecycle Management
 
 When working with tmux integration, understanding the session lifecycle is crucial for preventing orphaned processes and ghost panes.
@@ -278,3 +284,4 @@ Read-only dependency source repositories are available under
 - `.slim/clonedeps/repos/opencode-ai__opencode/` — `https://github.com/opencode-ai/opencode.git` at `main@73ee493265acf15fcd8caab2bc8cd3bd375b63cb`; inspect `packages/plugin` and `packages/sdk/js` for OpenCode plugin and SDK internals.
 - `.slim/clonedeps/repos/opencode/` — `https://github.com/anomalyco/opencode.git` at `dev@356f6841865d68adf6d0123c37357ad50814497a`; inspect `packages/opencode` for latest TypeScript runtime internals and experimental background subagent support.
 - `.slim/clonedeps/repos/modelcontextprotocol__typescript-sdk/` — `https://github.com/modelcontextprotocol/typescript-sdk.git` at `v1.29.0@e12cbd7078db388152f6e839abdbe09ba01f3f32`; inspect it for MCP protocol and server integration internals.
+- `.slim/clonedeps/repos/agentclientprotocol__agent-client-protocol/` — `https://github.com/agentclientprotocol/agent-client-protocol.git` at `main@8110fde4e8283b4bef1329d1ef7b074fd14cee1e`; inspect it for ACP protocol specification and schema details.

@@ -1,6 +1,8 @@
-import type { Plugin } from '@opencode-ai/plugin';
+import type { Plugin, ToolDefinition } from '@opencode-ai/plugin';
 import { createAgents, getAgentConfigs, getDisabledAgents } from './agents';
 import { buildOrchestratorPrompt } from './agents/orchestrator';
+import { CompanionManager } from './companion/manager';
+import { ensureCompanionVersion } from './companion/updater';
 import {
   type AgentOverrideConfig,
   deepMerge,
@@ -9,29 +11,28 @@ import {
 } from './config';
 import { parseList } from './config/agent-mcps';
 import { AGENT_ALIASES } from './config/constants';
-import { normalizeFallbackChainsForPreset } from './config/fallback-chains';
 import {
   getActiveRuntimePreset,
   getPreviousRuntimePreset,
   setActiveRuntimePreset,
 } from './config/runtime-preset';
 import { CouncilManager } from './council';
-import { createDivoomManager } from './divoom/manager';
 import {
   createApplyPatchHook,
   createAutoUpdateCheckerHook,
   createChatHeadersHook,
+  createDeepworkCommandHook,
   createDelegateTaskRetryHook,
   createFilterAvailableSkillsHook,
   createJsonErrorRecoveryHook,
   createPhaseReminderHook,
   createPostFileToolNudgeHook,
-  createSessionGoalHook,
+  createReflectCommandHook,
   createTaskSessionManagerHook,
-  createTodoContinuationHook,
   ForegroundFallbackManager,
 } from './hooks';
 import { processImageAttachments } from './hooks/image-hook';
+import type { MessageWithParts } from './hooks/types';
 import { createInterviewManager } from './interview';
 import { createBuiltinMcps } from './mcp';
 import {
@@ -42,16 +43,15 @@ import {
 import {
   ast_grep_replace,
   ast_grep_search,
+  createAcpRunTool,
+  createCancelTaskTool,
   createCouncilTool,
   createPresetManager,
-  createReadSessionTool,
-  createSubtaskCommandManager,
-  createSubtaskState,
-  createSubtaskTool,
   createWebfetchTool,
 } from './tools';
 import { recordTuiAgentModel, recordTuiAgentModels } from './tui-state';
 import {
+  BackgroundJobBoard,
   createDisplayNameMentionRewriter,
   resolveRuntimeAgentName,
 } from './utils';
@@ -85,7 +85,9 @@ async function appLog(
 /** Minimum expected registrations for a healthy plugin load. */
 const HEALTH_CHECK = {
   minAgents: 5,
-  minTools: 5,
+  // Default tool set when council and ACP agents are not configured:
+  // cancel_task, webfetch, ast_grep_search, ast_grep_replace.
+  minTools: 4,
   minMcps: 1,
 } as const;
 
@@ -138,19 +140,21 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
   let applyPatchHook: ReturnType<typeof createApplyPatchHook>;
   let jsonErrorRecoveryHook: ReturnType<typeof createJsonErrorRecoveryHook>;
   let foregroundFallback: ForegroundFallbackManager;
-  let todoContinuationHook: ReturnType<typeof createTodoContinuationHook>;
-  let sessionGoalHook: ReturnType<typeof createSessionGoalHook>;
+  let deepworkCommandHook: ReturnType<typeof createDeepworkCommandHook>;
+  let reflectCommandHook: ReturnType<typeof createReflectCommandHook>;
   let taskSessionManagerHook: ReturnType<typeof createTaskSessionManagerHook>;
+  let backgroundJobBoard: BackgroundJobBoard;
   let interviewManager: ReturnType<typeof createInterviewManager>;
   let presetManager: ReturnType<typeof createPresetManager>;
-  let divoomManager: ReturnType<typeof createDivoomManager>;
-  let councilTools: Record<string, unknown>;
+  let companionManager: CompanionManager;
+  let councilTools: ReturnType<typeof createCouncilTool>;
+  let cancelTaskTools: ReturnType<typeof createCancelTaskTool>;
+  let acpRunTools: Record<string, ReturnType<typeof createAcpRunTool>>;
   let webfetch: ReturnType<typeof createWebfetchTool>;
+  let tools: Record<string, ToolDefinition>;
   let rewriteDisplayNameMentions: ReturnType<
     typeof createDisplayNameMentionRewriter
   >;
-  let subtaskCommandManager: ReturnType<typeof createSubtaskCommandManager>;
-  let subtaskState: ReturnType<typeof createSubtaskState>;
 
   // Counters for post-init health check (set inside try, checked outside)
   let toolCount = 0;
@@ -181,46 +185,18 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
     agentDefs = createAgents(config);
     agents = getAgentConfigs(config);
 
-    // Build a map of agent name → priority model array for runtime
-    // fallback. Populated when the user configures model as an array in
-    // their plugin config.
+    // Build model array map and runtime fallback chains from _modelArray
+    // entries (when the user configures model as an array in
+    // agents.<name>.model). A single pass populates both data structures.
     modelArrayMap = {} as Record<
       string,
       Array<{ id: string; variant?: string }>
     >;
-    for (const agentDef of agentDefs) {
-      if (agentDef._modelArray && agentDef._modelArray.length > 0) {
-        modelArrayMap[agentDef.name] = agentDef._modelArray;
-      }
-    }
-    // Build runtime fallback chains for all foreground agents. Each chain
-    // is an ordered list of model strings to try when the current model is
-    // rate-limited. Seeds from _modelArray entries (when the user
-    // configures model as an array), then appends fallback.chains entries.
     runtimeChains = {} as Record<string, string[]>;
     for (const agentDef of agentDefs) {
       if (agentDef._modelArray?.length) {
+        modelArrayMap[agentDef.name] = agentDef._modelArray;
         runtimeChains[agentDef.name] = agentDef._modelArray.map((m) => m.id);
-      }
-    }
-    const activePresetForFallback =
-      getActiveRuntimePreset() ?? config.preset ?? null;
-
-    if (config.fallback?.enabled !== false) {
-      const chains = normalizeFallbackChainsForPreset(
-        (config.fallback?.chains as Record<string, string[] | undefined>) ?? {},
-        activePresetForFallback,
-      );
-      for (const [agentName, chainModels] of Object.entries(chains)) {
-        const existing = runtimeChains[agentName] ?? [];
-        const seen = new Set(existing);
-        for (const m of chainModels) {
-          if (!seen.has(m)) {
-            seen.add(m);
-            existing.push(m);
-          }
-        }
-        runtimeChains[agentName] = existing;
       }
     }
 
@@ -261,18 +237,32 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
       : {};
 
     mcps = createBuiltinMcps(config.disabled_mcps, config.websearch);
+    acpRunTools =
+      Object.keys(config.acpAgents ?? {}).length > 0
+        ? { acp_run: createAcpRunTool(config.acpAgents) }
+        : {};
     webfetch = createWebfetchTool(ctx);
+    backgroundJobBoard = new BackgroundJobBoard({
+      maxReusablePerAgent: config.backgroundJobs?.maxSessionsPerAgent ?? 2,
+      readContextMinLines: config.backgroundJobs?.readContextMinLines ?? 10,
+      readContextMaxFiles: config.backgroundJobs?.readContextMaxFiles ?? 8,
+    });
 
     // Initialize MultiplexerSessionManager to handle OpenCode's built-in
     // Task tool sessions
     multiplexerSessionManager = new MultiplexerSessionManager(
       ctx,
       multiplexerConfig,
+      backgroundJobBoard,
     );
+    backgroundJobBoard.setTerminalStateListener((taskID) => {
+      void multiplexerSessionManager.retryDeferredIdleClose(taskID);
+    });
 
     // Initialize auto-update checker hook
     autoUpdateChecker = createAutoUpdateCheckerHook(ctx, {
       autoUpdate: config.autoUpdate ?? true,
+      companion: config.companion,
     });
 
     // Initialize phase reminder hook for workflow compliance
@@ -307,37 +297,46 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
         Object.keys(runtimeChains).length > 0,
     );
 
-    // Initialize todo-continuation hook (opt-in auto-continue for
-    // incomplete todos)
-    todoContinuationHook = createTodoContinuationHook(ctx, {
-      maxContinuations: config.todoContinuation?.maxContinuations ?? 5,
-      cooldownMs: config.todoContinuation?.cooldownMs ?? 3000,
-      autoEnable: config.todoContinuation?.autoEnable ?? false,
-      autoEnableThreshold: config.todoContinuation?.autoEnableThreshold ?? 4,
-    });
-    sessionGoalHook = createSessionGoalHook(ctx, config, {
-      getAgentName: (sessionID) => sessionAgentMap.get(sessionID),
-    });
+    deepworkCommandHook = createDeepworkCommandHook();
+    reflectCommandHook = createReflectCommandHook();
     taskSessionManagerHook = createTaskSessionManagerHook(ctx, {
-      maxSessionsPerAgent: config.sessionManager?.maxSessionsPerAgent ?? 2,
-      readContextMinLines: config.sessionManager?.readContextMinLines ?? 10,
-      readContextMaxFiles: config.sessionManager?.readContextMaxFiles ?? 8,
+      maxSessionsPerAgent: config.backgroundJobs?.maxSessionsPerAgent ?? 2,
+      readContextMinLines: config.backgroundJobs?.readContextMinLines ?? 10,
+      readContextMaxFiles: config.backgroundJobs?.readContextMaxFiles ?? 8,
+      backgroundJobBoard,
       shouldManageSession: (sessionID) =>
         sessionAgentMap.get(sessionID) === 'orchestrator',
     });
     interviewManager = createInterviewManager(ctx, config);
     presetManager = createPresetManager(ctx, config);
-    divoomManager = createDivoomManager(config.divoom);
+    companionManager = new CompanionManager(
+      `proc_${process.pid}`,
+      ctx.directory,
+      config.companion,
+    );
+    cancelTaskTools = createCancelTaskTool({
+      client: ctx.client,
+      backgroundJobBoard,
+      shouldManageSession: (sessionID) =>
+        sessionAgentMap.get(sessionID) === 'orchestrator',
+    });
 
-    subtaskState = createSubtaskState();
-    subtaskCommandManager = createSubtaskCommandManager(ctx, subtaskState);
+    tools = {
+      ...councilTools,
+      ...cancelTaskTools,
+      ...acpRunTools,
+      webfetch,
+      ast_grep_search,
+      ast_grep_replace,
+    };
+    if (config.disabled_tools && config.disabled_tools.length > 0) {
+      const disabledTools = new Set(config.disabled_tools);
+      tools = Object.fromEntries(
+        Object.entries(tools).filter(([name]) => !disabledTools.has(name)),
+      );
+    }
 
-    toolCount =
-      Object.keys(councilTools).length +
-      Object.keys(todoContinuationHook.tool).length +
-      1 + // webfetch
-      2 + // ast_grep_search, ast_grep_replace
-      2; // subtask, read_session
+    toolCount = Object.keys(tools).length;
   } catch (err) {
     // Plugin init failed: log visibly before re-throwing so the user
     // sees something actionable instead of a silent "loaded but empty".
@@ -394,24 +393,61 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
     }
   });
 
-  divoomManager.onPluginLoad();
+  if (config.companion?.enabled === true) {
+    try {
+      const companionResult = await ensureCompanionVersion({
+        config: config.companion,
+        downloadTimeoutMs: 3_000,
+        lockTimeoutMs: 500,
+      });
+      if (companionResult.status === 'installed') {
+        log('[companion] updated before startup', companionResult.version);
+      } else if (companionResult.status === 'failed') {
+        log('[companion] startup update failed', companionResult.error);
+      }
+    } catch (err) {
+      log('[companion] startup update failed', String(err));
+    }
+  }
+
+  companionManager.onLoad();
+
+  function resolveTuiVariantForModel(
+    agentName: string,
+    model: string,
+  ): string | undefined {
+    const configEntry = config.agents?.[agentName];
+    const defaultVariant =
+      typeof configEntry?.variant === 'string'
+        ? configEntry.variant
+        : undefined;
+    const chainMatches = modelArrayMap[agentName]?.filter(
+      (entry) => entry.id === model,
+    );
+    if (chainMatches) {
+      if (chainMatches.length === 1) {
+        return chainMatches[0].variant ?? defaultVariant;
+      }
+      return undefined;
+    }
+
+    if (
+      typeof configEntry?.model === 'string' &&
+      configEntry.model === model &&
+      defaultVariant
+    ) {
+      return defaultVariant;
+    }
+
+    return undefined;
+  }
 
   return {
     name: 'oh-my-opencode-slim',
 
     agent: agents,
 
-    tool: {
-      ...councilTools,
-      webfetch,
-      ...todoContinuationHook.tool,
-      ast_grep_search,
-      ast_grep_replace,
-      subtask: createSubtaskTool(ctx, subtaskState, depthTracker, {
-        timeoutMs: config.subtask?.timeoutMs,
-      }),
-      read_session: createReadSessionTool(ctx.client, subtaskState),
-    },
+    tool: tools,
 
     mcp: mcps,
 
@@ -450,74 +486,24 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
       }
       const configAgent = opencodeConfig.agent as Record<string, unknown>;
 
-      // Model resolution for foreground agents: combine _modelArray
-      // entries with fallback.chains config, then pick the first model in
-      // the effective array for startup-time selection.
+      // Model resolution for foreground agents: use _modelArray entries
+      // to pick the first model for startup-time selection.
       //
       // Runtime failover on API errors (e.g. rate limits
       // mid-conversation) is handled separately by
       // ForegroundFallbackManager via the event hook.
-      const activePresetForFallback =
-        getActiveRuntimePreset() ?? config.preset ?? null;
-      const fallbackChainsEnabled = config.fallback?.enabled !== false;
-      const fallbackChains = fallbackChainsEnabled
-        ? normalizeFallbackChainsForPreset(
-            (config.fallback?.chains as Record<string, string[] | undefined>) ??
-              {},
-            activePresetForFallback,
-          )
-        : {};
+      if (Object.keys(modelArrayMap).length > 0) {
+        for (const [agentName, models] of Object.entries(modelArrayMap)) {
+          if (models.length === 0) continue;
 
-      // Build effective model arrays: seed from _modelArray, then append
-      // fallback.chains entries so the resolver considers the full chain
-      // when picking the best available provider at startup.
-      const effectiveArrays: Record<
-        string,
-        Array<{ id: string; variant?: string }>
-      > = {};
-
-      for (const [agentName, models] of Object.entries(modelArrayMap)) {
-        effectiveArrays[agentName] = [...models];
-      }
-
-      for (const [agentName, chainModels] of Object.entries(fallbackChains)) {
-        if (!chainModels || chainModels.length === 0) continue;
-
-        if (!effectiveArrays[agentName]) {
-          // Agent has no _modelArray — seed from its current string model
-          // so the fallback chain appends after it rather than replacing
-          // it.
-          const entry = configAgent[agentName] as
-            | Record<string, unknown>
-            | undefined;
-          const currentModel =
-            typeof entry?.model === 'string' ? entry.model : undefined;
-          effectiveArrays[agentName] = currentModel
-            ? [{ id: currentModel }]
-            : [];
-        }
-
-        const seen = new Set(effectiveArrays[agentName].map((m) => m.id));
-        for (const chainModel of chainModels) {
-          if (!seen.has(chainModel)) {
-            seen.add(chainModel);
-            effectiveArrays[agentName].push({ id: chainModel });
-          }
-        }
-      }
-
-      if (Object.keys(effectiveArrays).length > 0) {
-        for (const [agentName, modelArray] of Object.entries(effectiveArrays)) {
-          if (modelArray.length === 0) continue;
-
-          // Use the first model in the effective array. Not all providers
+          // Use the first model in the model array. Not all providers
           // require entries in opencodeConfig.provider — some are loaded
           // automatically by opencode (e.g. github-copilot, openrouter).
           // We cannot distinguish these from truly unconfigured providers
           // at config-hook time, so we cannot gate on the provider config
           // keys. Runtime failover is handled separately by
           // ForegroundFallbackManager.
-          const chosen = modelArray[0];
+          const chosen = models[0];
           const entry = configAgent[agentName] as
             | Record<string, unknown>
             | undefined;
@@ -659,6 +645,7 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
       }
 
       const tuiAgentModels: Record<string, string> = {};
+      const tuiAgentVariants: Record<string, string> = {};
       for (const agentDef of agentDefs) {
         if (agentDef.name === 'councillor') continue;
 
@@ -673,10 +660,22 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
               : typeof agentDef.config.model === 'string'
                 ? agentDef.config.model
                 : undefined;
+        const resolvedVariant =
+          typeof entry?.variant === 'string'
+            ? entry.variant
+            : typeof agentDef.config.variant === 'string'
+              ? agentDef.config.variant
+              : undefined;
 
         tuiAgentModels[agentDef.name] = resolvedModel ?? 'default';
+        if (resolvedVariant) {
+          tuiAgentVariants[agentDef.name] = resolvedVariant;
+        }
       }
-      recordTuiAgentModels({ agentModels: tuiAgentModels });
+      recordTuiAgentModels({
+        agentModels: tuiAgentModels,
+        agentVariants: tuiAgentVariants,
+      });
 
       // Merge MCP configs
       const configMcp = opencodeConfig.mcp as
@@ -732,27 +731,10 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
         agentConfigEntry.permission = agentPermission;
       }
 
-      // Register /auto-continue command so OpenCode recognizes it.
-      // Actual handling is done by command.execute.before hook below
-      // (no LLM round-trip — injected directly into output.parts).
-      const configCommand = opencodeConfig.command as
-        | Record<string, unknown>
-        | undefined;
-      if (!configCommand?.['auto-continue']) {
-        if (!opencodeConfig.command) {
-          opencodeConfig.command = {};
-        }
-        (opencodeConfig.command as Record<string, unknown>)['auto-continue'] = {
-          template: 'Call the auto_continue tool with enabled=true',
-          description:
-            'Enable auto-continuation — orchestrator keeps working through incomplete todos',
-        };
-      }
-
       interviewManager.registerCommand(opencodeConfig);
-      sessionGoalHook.registerCommand(opencodeConfig);
+      deepworkCommandHook.registerCommand(opencodeConfig);
+      reflectCommandHook.registerCommand(opencodeConfig);
       presetManager.registerCommand(opencodeConfig);
-      subtaskCommandManager.registerCommand(opencodeConfig);
     },
 
     event: async (input) => {
@@ -766,6 +748,10 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
             agent?: string;
             providerID?: string;
             modelID?: string;
+            model?: {
+              providerID?: string;
+              modelID?: string;
+            };
             sessionID?: string;
           };
           sessionID?: string;
@@ -777,14 +763,26 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
 
       if (event.type === 'message.updated') {
         const info = event.properties?.info;
-        if (
-          typeof info?.agent === 'string' &&
-          typeof info.providerID === 'string' &&
-          typeof info.modelID === 'string'
-        ) {
+        const providerID =
+          typeof info?.providerID === 'string'
+            ? info.providerID
+            : typeof info?.model?.providerID === 'string'
+              ? info.model.providerID
+              : undefined;
+        const modelID =
+          typeof info?.modelID === 'string'
+            ? info.modelID
+            : typeof info?.model?.modelID === 'string'
+              ? info.model.modelID
+              : undefined;
+        if (typeof info?.agent === 'string' && providerID && modelID) {
+          const agentName = resolveRuntimeAgentName(config, info.agent);
+          const model = `${providerID}/${modelID}`;
+          const variant = resolveTuiVariantForModel(agentName, model);
           recordTuiAgentModel({
-            agentName: resolveRuntimeAgentName(config, info.agent),
-            model: `${info.providerID}/${info.modelID}`,
+            agentName,
+            model,
+            variant: variant ?? null,
           });
         }
       }
@@ -810,15 +808,6 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
       // Runtime model fallback for foreground agents (rate-limit detection)
       await foregroundFallback.handleEvent(input.event);
 
-      // Todo-continuation: auto-continue orchestrator on incomplete todos
-      await todoContinuationHook.handleEvent(input);
-
-      sessionGoalHook.handleEvent(
-        input as {
-          event: { type: string; properties?: Record<string, unknown> };
-        },
-      );
-
       // Handle auto-update checking
       await autoUpdateChecker.event(input);
 
@@ -837,29 +826,11 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
         },
       );
 
-      subtaskCommandManager.handleEvent(
-        input as {
-          event: {
-            type: string;
-            properties?: {
-              info?: { id?: string; parentID?: string };
-              sessionID?: string;
-            };
-          };
-        },
-      );
-
       if (
         event.type === 'permission.asked' ||
         event.type === 'question.asked'
       ) {
-        const props = event.properties as
-          | { sessionID?: string; id?: string; requestID?: string }
-          | undefined;
-        divoomManager.onUserInputRequired({
-          sessionId: props?.sessionID,
-          requestId: props?.id ?? props?.requestID,
-        });
+        companionManager.onWaitingInput();
       }
 
       if (
@@ -867,13 +838,7 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
         event.type === 'question.replied' ||
         event.type === 'question.rejected'
       ) {
-        const props = event.properties as
-          | { sessionID?: string; requestID?: string; id?: string }
-          | undefined;
-        divoomManager.onUserInputResolved({
-          sessionId: props?.sessionID,
-          requestId: props?.requestID ?? props?.id,
-        });
+        companionManager.onInputResolved();
       }
 
       if (input.event.type === 'session.status') {
@@ -881,12 +846,10 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
           | { sessionID?: string; status?: { type?: string } }
           | undefined;
         const sessionID = props?.sessionID;
-        divoomManager.onOrchestratorStatus({
+        companionManager.onSessionStatus({
           sessionId: sessionID,
+          agent: sessionID ? sessionAgentMap.get(sessionID) : undefined,
           status: props?.status?.type,
-          isOrchestrator: sessionID
-            ? sessionAgentMap.get(sessionID) === 'orchestrator'
-            : false,
         });
       }
 
@@ -895,12 +858,7 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
           | { info?: { id?: string }; sessionID?: string }
           | undefined;
         const sessionID = props?.info?.id ?? props?.sessionID;
-        divoomManager.onSessionDeleted({
-          sessionId: sessionID,
-          isOrchestrator: sessionID
-            ? sessionAgentMap.get(sessionID) === 'orchestrator'
-            : false,
-        });
+        companionManager.onSessionDeleted(sessionID);
       }
 
       if (input.event.type === 'session.deleted') {
@@ -940,27 +898,10 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
         output as { args?: unknown },
       );
 
-      if (input.tool.toLowerCase() === 'task') {
-        divoomManager.onTaskStart({
-          parentSessionId: input.sessionID,
-          callId: input.callID,
-          args: output.args,
-        });
-      }
+      // No-op for divoom
     },
 
-    // Direct interception of /auto-continue command — bypasses LLM
-    // round-trip
     'command.execute.before': async (input, output) => {
-      await todoContinuationHook.handleCommandExecuteBefore(
-        input as {
-          command: string;
-          sessionID: string;
-          arguments: string;
-        },
-        output as { parts: Array<{ type: string; text?: string }> },
-      );
-
       await interviewManager.handleCommandExecuteBefore(
         input as {
           command: string;
@@ -979,7 +920,16 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
         output as { parts: Array<{ type: string; text?: string }> },
       );
 
-      await sessionGoalHook.handleCommandExecuteBefore(
+      await deepworkCommandHook.handleCommandExecuteBefore(
+        input as {
+          command: string;
+          sessionID: string;
+          arguments: string;
+        },
+        output as { parts: Array<{ type: string; text?: string }> },
+      );
+
+      await reflectCommandHook.handleCommandExecuteBefore(
         input as {
           command: string;
           sessionID: string;
@@ -1012,11 +962,15 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
 
       if (agent) {
         sessionAgentMap.set(input.sessionID, agent);
+        // A chat message means this session is actively working. This also
+        // covers the race where session.status busy fires before the
+        // session's agent is known.
+        companionManager.onSessionStatus({
+          sessionId: input.sessionID,
+          agent,
+          status: 'busy',
+        });
       }
-      todoContinuationHook.handleChatMessage({
-        sessionID: input.sessionID,
-        agent,
-      });
     },
 
     // Inject orchestrator system prompt for serve-mode sessions. In serve
@@ -1059,8 +1013,6 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
         }
       }
 
-      sessionGoalHook.handleSystemTransform(input, output);
-
       // Collapse to single system message for provider compatibility.
       // Some providers (e.g. Qwen via VLLM/DashScope) reject multiple
       // system messages. Sub-hooks above may push additional entries; join
@@ -1075,18 +1027,7 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
       input: Record<string, never>,
       output: { messages: unknown[] },
     ): Promise<void> => {
-      // Type assertion since we know the structure matches
-      // MessageWithParts[]
-      const typedOutput = output as {
-        messages: Array<{
-          info: { role: string; agent?: string; sessionID?: string };
-          parts: Array<{
-            type: string;
-            text?: string;
-            [key: string]: unknown;
-          }>;
-        }>;
-      };
+      const typedOutput = output as { messages: MessageWithParts[] };
 
       for (const message of typedOutput.messages) {
         if (message.info.role !== 'user') {
@@ -1112,9 +1053,6 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
         log,
       });
 
-      await todoContinuationHook.handleMessagesTransform({
-        messages: typedOutput.messages,
-      });
       await taskSessionManagerHook['experimental.chat.messages.transform'](
         input,
         typedOutput,
@@ -1176,16 +1114,6 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
         ),
       );
 
-      await runPostToolHook('todo-continuation', () =>
-        todoContinuationHook.handleToolExecuteAfter(
-          input as {
-            tool: string;
-            sessionID?: string;
-          },
-          output as { output?: unknown },
-        ),
-      );
-
       await runPostToolHook('post-file-tool-nudge', () =>
         postFileToolNudgeHook['tool.execute.after'](
           input as {
@@ -1211,13 +1139,6 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
           output as { output: unknown },
         ),
       );
-
-      if (input.tool.toLowerCase() === 'task') {
-        divoomManager.onTaskEnd({
-          parentSessionId: input.sessionID,
-          callId: input.callID,
-        });
-      }
     },
   };
 };

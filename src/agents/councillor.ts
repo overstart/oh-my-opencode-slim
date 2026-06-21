@@ -1,4 +1,6 @@
+import { NO_SHELL_READONLY_FILE_OPERATIONS_RULES } from '../config';
 import { type AgentDefinition, resolvePrompt } from './orchestrator';
+import { createReadOnlyAgentPermission } from './permissions';
 
 /**
  * Councillor agent — a read-only advisor in the multi-LLM council.
@@ -29,6 +31,8 @@ problem.
 
 You CANNOT edit files, write files, run shell commands, or delegate to \
 other agents. You are an advisor, not an implementer.
+
+${NO_SHELL_READONLY_FILE_OPERATIONS_RULES}
 
 **Behavior**:
 - **Examine the codebase** before answering — your read access is what makes \
@@ -66,18 +70,8 @@ export function createCouncillorAgent(
       model,
       temperature: 0.2,
       prompt,
-      // Mirror OpenCode's explore agent: deny all, then allow read-only tools
-      permission: {
-        '*': 'deny',
-        question: 'deny',
-        read: 'allow',
-        glob: 'allow',
-        grep: 'allow',
-        lsp: 'allow',
-        list: 'allow',
-        codesearch: 'allow',
-        ast_grep_search: 'allow',
-      },
+      // Strict read-only allowlist: deny all, then allow inspection tools only.
+      permission: createReadOnlyAgentPermission(),
     },
   };
 }

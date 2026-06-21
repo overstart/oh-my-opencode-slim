@@ -1,12 +1,12 @@
 <div align="center">
   <a href="https://github.com/alvinunreal/oh-my-opencode-slim/stargazers">
-    <img src="img/v2beta.webp" alt="V2 Beta Release" style="border-radius: 10px;">
+    <img src="img/v2.webp" alt="oh-my-opencode-slim V2 Release" style="border-radius: 10px;">
   </a>
-  <h3>✨ V2 Beta Release: Background Orchestration Has Arrived ✨</h3>
-  <p><i>The orchestrator now schedules specialist agents in the background,<br>while <code>/deepwork</code> turns big goals into file-backed plans.<br>Beta testers: share your feedback with us on Telegram.</i></p>
+  <h3>✨ oh-my-opencode-slim ✨</h3>
 
-  <p><b>Open Multi Agent Suite</b> · Mix any models · Auto delegate tasks</p>
+  <p><i>Seven divine beings emerged from the dawn of code, each an immortal master of their craft,<br>awaiting your command to forge order from chaos and build what was once thought impossible.</i></p>
 
+  <p><b>Opencode Multi Agent Suite</b> · Mix any models · Auto delegate tasks</p>
   <p><sub>by <b>Boring Dystopia Development</b></sub></p>
   <p>
     <a href="https://boringdystopia.ai/"><img src="https://img.shields.io/badge/boringdystopia.ai-111111?style=for-the-badge&logo=vercel&logoColor=white" alt="boringdystopia.ai"></a>&nbsp;
@@ -20,19 +20,7 @@
 
   <p><sub>✦ ✦ ✦</sub></p>
 
-## Support the Project 💖
-
-oh-my-opencode-slim is built and maintained in my spare time. If it helps you consider sponsoring my codex subscription.
-
-**Goal: $200/month**
-
-[![Sponsor](https://img.shields.io/github/sponsors/alvinunreal?style=for-the-badge&logo=GitHub-Sponsors&logoColor=EA4AAA&label=Sponsor)](https://github.com/sponsors/alvinunreal)
-
-See live progress + become a sponsor → [GitHub Sponsors](https://github.com/sponsors/alvinunreal)
-
 </div>
-
----
 
 ## What's This Plugin
 
@@ -41,6 +29,61 @@ oh-my-opencode-slim is an agent orchestration plugin for OpenCode. It includes a
 The main idea is simple: instead of forcing one model to do everything, the plugin routes each part of the job to the agent best suited for it, balancing **quality, speed and cost**.
 
 To explore the agents themselves, see **[Meet the Pantheon](#meet-the-pantheon)**. For the full feature set, see **[Features & Workflows](#features-and-workflows)** below.
+
+### Manage Agent Skills with LazySkills
+
+<p align="center">
+  <a href="https://github.com/alvinunreal/lazyskills">
+    <img src="img/lazyskills-wide.svg" alt="LazySkills" width="720">
+  </a>
+</p>
+
+**[LazySkills](https://github.com/alvinunreal/lazyskills)** is a terminal UI for managing agent skills. It gives you one place to see what is installed, which agents can use each skill, why visibility may be broken, and what actions are safe to run next.
+
+<p align="center">
+  <a href="https://github.com/alvinunreal/lazyskills"><b>Explore LazySkills →</b></a>
+</p>
+
+### 🏛️ Support
+
+My sponsorship goal is **$200/month**.
+
+That covers my Codex subscription, so I can keep building and testing oh-my-opencode-slim without worrying about token costs.
+
+<p align="center">
+  <a href="https://github.com/sponsors/alvinunreal">Sponsor this project</a>
+</p>
+
+### ✨ Sponsors
+
+<p align="center">
+  <a href="https://github.com/sponsors/alvinunreal">
+    <img src="./sponsors.svg" alt="Sponsors" width="800">
+  </a>
+</p>
+
+### What Users Say
+
+> “Task management went from 5/10 to 8-9/10 easily. The Orchestrator sends
+> Fixers and Explorers, and I can still talk and plan with the Orchestrator in
+> the same session. The experience feels way smoother now.”
+>
+> \- `vipor_idk`
+
+> “I ditched all my harnesses for this beta version of omo-slim and don't look
+> back or miss anything. Great work and IMHO all in the right direction.”
+>
+> \- `stephanschielke`
+
+> “I love omo-slim, and can't imagine running opencode without it. I love that I
+> can create a Frankenstein of models... Makes the setup such a beast.”
+>
+> \- `Capital-One3039`
+
+> “It has significantly improved my workflow... Now, it is working very
+> smoothly, and I love it.”
+>
+> \- `xenstar1`
 
 ### Quick Start
 
@@ -58,24 +101,11 @@ Install and configure oh-my-opencode-slim: https://raw.githubusercontent.com/alv
 bunx oh-my-opencode-slim@latest install
 ```
 
-### V2 Background-Orchestration Beta
-
-V2 changes the orchestrator from the default execution worker into a scheduler:
-it plans work, dispatches specialists as background tasks, polls their status,
-then reconciles results before continuing. This requires OpenCode's native
-background subagent support, so beta users must start OpenCode with the
-experimental flag enabled.
-
-```bash
-# Existing users: clear OpenCode's cached package first so beta is fetched fresh.
-rm -rf ~/.cache/opencode/packages/oh-my-opencode-slim
-bunx oh-my-opencode-slim@beta install
-OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=1 opencode
-```
-
 ### Getting Started
 
-The installer generates both OpenAI and OpenCode Go presets, with OpenAI active by default. OpenAI uses `openai/gpt-5.5` for the higher-judgment agents and `openai/gpt-5.4-mini` for the faster scoped agents. To make OpenCode Go active during install, run `bunx oh-my-opencode-slim@latest install --preset=opencode-go` or change the default preset name in `~/.config/opencode/oh-my-opencode-slim.json` after installation.
+The installer generates both OpenAI and OpenCode Go presets, with OpenAI active by default.
+
+To make OpenCode Go active during install, run `bunx oh-my-opencode-slim@latest install --preset=opencode-go` or change the default preset name in `~/.config/opencode/oh-my-opencode-slim.json` after installation.
 
 Then:
 
@@ -90,13 +120,14 @@ Then:
    opencode models --refresh
    ```
 3. **Open your plugin config** at `~/.config/opencode/oh-my-opencode-slim.json`
-   or `$OPENCODE_CONFIG_DIR/oh-my-opencode-slim.json` if you use a custom
-   OpenCode config directory
 
 4. **Update the models you want for each agent**
 
 > [!TIP]
-> It's **recommended** to understand how automatic delegation works. The **[Orchestrator prompt](https://github.com/alvinunreal/oh-my-opencode-slim/blob/master/src/agents/orchestrator.ts#L28)** contains the delegation rules, specialist routing logic, and the thresholds for when the main agent should hand work off to subagents. You can alway delegate manually by calling a subagent via: `@agentName <task>`
+> It's **recommended** to understand how background orchestration works. The **[Orchestrator prompt](https://github.com/alvinunreal/oh-my-opencode-slim/blob/master/src/agents/orchestrator.ts#L28)** contains the scheduler rules, specialist routing logic, and thresholds for when work should be assigned to background agents. You can always delegate manually by calling a subagent via: `@agentName <task>`
+
+> [!TIP]
+> Because background agents are now the default workflow, it is **highly recommended** to enable and configure **[Multiplexer Integration](docs/multiplexer-integration.md)**. It automatically opens each agent in a dedicated Tmux or Zellij pane, so you can watch specialists work live while the Orchestrator continues coordinating the session.
 
 The default generated configuration includes both `openai` and `opencode-go` presets.
 
@@ -106,18 +137,18 @@ The default generated configuration includes both `openai` and `opencode-go` pre
   "preset": "openai",
   "presets": {
     "openai": {
-      "orchestrator": { "model": "openai/gpt-5.5", "skills": ["*"], "mcps": ["*", "!context7"] },
+      "orchestrator": { "model": "openai/gpt-5.5", "variant": "medium", "skills": ["*"], "mcps": ["*", "!context7"] },
       "oracle": { "model": "openai/gpt-5.5", "variant": "high", "skills": ["simplify"], "mcps": [] },
-      "librarian": { "model": "openai/gpt-5.4-mini", "variant": "low", "skills": [], "mcps": ["websearch", "context7", "grep_app"] },
+      "librarian": { "model": "openai/gpt-5.4-mini", "variant": "low", "skills": [], "mcps": ["websearch", "context7", "gh_grep"] },
       "explorer": { "model": "openai/gpt-5.4-mini", "variant": "low", "skills": [], "mcps": [] },
       "designer": { "model": "openai/gpt-5.4-mini", "variant": "medium", "skills": [], "mcps": [] },
-      "fixer": { "model": "openai/gpt-5.4-mini", "variant": "low", "skills": [], "mcps": [] }
+      "fixer": { "model": "openai/gpt-5.5", "variant": "low", "skills": [], "mcps": [] }
     },
     "opencode-go": {
       "orchestrator": { "model": "opencode-go/glm-5.1", "skills": [ "*" ], "mcps": [ "*", "!context7" ] },
       "oracle": { "model": "opencode-go/deepseek-v4-pro", "variant": "max", "skills": ["simplify"], "mcps": [] },
       "council": { "model": "opencode-go/deepseek-v4-pro", "variant": "high", "skills": [], "mcps": [] },
-      "librarian": { "model": "opencode-go/minimax-m2.7", "skills": [], "mcps": [ "websearch", "context7", "grep_app" ] },
+      "librarian": { "model": "opencode-go/minimax-m2.7", "skills": [], "mcps": [ "websearch", "context7", "gh_grep" ] },
       "explorer": { "model": "opencode-go/minimax-m2.7", "skills": [], "mcps": [] },
       "designer": { "model": "opencode-go/kimi-k2.6", "variant": "medium", "skills": [], "mcps": [] },
       "fixer": { "model": "opencode-go/deepseek-v4-flash", "variant": "high", "skills": [], "mcps": [] }
@@ -129,12 +160,6 @@ The default generated configuration includes both `openai` and `opencode-go` pre
 ### For Alternative Providers
 
 To use custom providers or a mixed-provider setup, use **[Configuration](docs/configuration.md)** for the full reference. If you want a ready-made starting point, check the **[Author's Preset](docs/authors-preset.md)** and **[$30 Preset](docs/thirty-dollars-preset.md)** - the `$30` preset is the best cheap setup.
-
-The configuration guide also covers custom subagents via `agents.<name>`, where
-you can define both a normal `prompt` and an `orchestratorPrompt` block for
-delegation.
-
-For model suggestions, see the **Recommended Models** listed under each agent below.
 
 ### ✅ Verify Your Setup
 
@@ -156,6 +181,120 @@ ping all agents
 </div>
 
 If any agent fails to respond, check your provider authentication and config file.
+
+---
+
+### What's New in V2
+
+V2 turns oh-my-opencode-slim into a scheduler-first multi-agent workflow system.
+The Orchestrator stays focused on planning, delegation, reconciliation, and
+verification while specialists do the work in their own lanes.
+
+- **[Background agents](#background-agents)** — the Orchestrator now dispatches
+  specialists as background tasks, tracks task/session IDs, waits for completion
+  events, and reconciles results before continuing.
+- **[Companion](#companion)** — an optional floating desktop window shows which
+  agents are currently active, including parallel background specialists.
+- **[Deepwork](#deepwork)** — a structured workflow for large, multi-file, risky,
+  or phased coding work using persistent plan files and Oracle review gates.
+- **[Reflect](#reflect)** — reviews repeated work patterns and suggests reusable skills,
+  agents, commands, config rules, prompt rules, or project playbooks.
+- **[Worktrees](#worktrees)** — manages Git worktrees as isolated coding lanes
+  with safety protocols for complex, risky, or parallel tasks.
+- **[oh-my-opencode-slim skill](#oh-my-opencode-slim-skill)** — a bundled
+  configuration skill that helps tune models, prompts, custom agents, MCP access,
+  presets, and plugin behavior safely.
+
+#### Background Agents
+
+V2 makes background specialists the default mental model: the Orchestrator plans
+the work graph, launches the right agents, avoids overlapping write ownership,
+and waits for terminal task results before acting on them.
+
+See **[Background Orchestration](docs/v2-background-orchestration.md)** for the
+full scheduler model.
+
+#### Companion
+
+The optional Companion is a floating desktop status window for live agent
+activity. It shows the current session state and which agents are active, so
+background work is easier to follow at a glance.
+
+<div align="center">
+  <img src="img/companion.gif" alt="Companion showing active agents" width="600">
+  <p><i>Left bottom visual companion.</i></p>
+</div>
+
+During interactive install, the installer asks whether to enable Companion and
+defaults to `yes`. For automation, enable it explicitly with:
+
+```bash
+bunx oh-my-opencode-slim@latest install --companion=yes
+```
+
+See **[Companion](docs/companion.md)** for configuration, positions, sizes, and
+install details.
+
+#### Deepwork
+
+Deepwork is for heavy coding sessions: broad refactors, multi-phase features,
+risky architecture changes, or work that needs a persistent plan. It creates a
+local markdown progress file, uses Oracle review gates, and keeps implementation
+phases structured.
+
+Start it with:
+
+```text
+/deepwork <heavy coding task>
+```
+
+See **[Skills](docs/skills.md#deepwork)** for when to use it and how the workflow
+runs.
+
+#### Reflect
+
+Reflect helps the Orchestrator learn from repeated workflow friction. It reviews
+recent work and existing assets, then recommends the smallest useful improvement:
+a skill, custom agent, command, config rule, prompt rule, MCP permission change,
+or project playbook. If there is not enough evidence, it should recommend
+creating nothing.
+
+Use it directly with:
+
+```text
+/reflect
+/reflect release workflow and checks
+```
+
+Or with natural prompts like:
+
+```text
+reflect on my recent workflows
+find repeated work worth turning into reusable instructions
+```
+
+See **[Skills](docs/skills.md#reflect)** for the full workflow and guardrails.
+
+#### Worktrees
+
+Worktrees manages Git worktrees as safe, isolated coding lanes under `.slim/worktrees/<slug>/`. The Orchestrator manages the lifecycle of these lanes, tracks state in `.slim/worktrees.json`, dispatches specialist agents inside them, and requires explicit confirmation before mutating git state.
+
+See **[Skills](docs/skills.md#worktrees)** for the safety protocol.
+
+#### oh-my-opencode-slim Skill
+
+The bundled `oh-my-opencode-slim` skill helps the Orchestrator configure and
+improve the plugin itself. Use it for model tuning, custom agents, prompt
+overrides, skill/MCP permissions, presets, optional agents, background
+orchestration, and recurring workflow friction.
+
+<div align="center">
+  <img src="img/oh-my-opencode-skill.png" alt="oh-my-opencode-slim skill in use" width="600">
+  <p><i>Ask the bundled skill to tune and improve your agent setup.</i></p>
+</div>
+
+See **[Skills](docs/skills.md#oh-my-opencode-slim)** for examples and safety
+rules.
 
 ---
 
@@ -187,17 +326,17 @@ If any agent fails to respond, check your provider authentication and config fil
   </tr>
   <tr>
     <td colspan="2">
-      <b>Default Model:</b> <code>openai/gpt-5.5</code>
+      <b>Default Model:</b> <code>openai/gpt-5.5 (medium)</code>
     </td>
   </tr>
   <tr>
     <td colspan="2">
-      <b>Recommended Models:</b> <code>openai/gpt-5.5</code> <code>anthropic/claude-opus-4.6</code>
+      <b>Recommended Models:</b> <code>openai/gpt-5.5 (medium)</code> <code>anthropic/claude-fable-5</code> <code>anthropic/claude-opus-4-8</code>
     </td>
   </tr>
   <tr>
     <td colspan="2">
-      <b>Model Guidance:</b> Choose your default, strongest all-around coding model. Orchestrator is both the main coding agent and the delegator, so it needs strong implementation ability, good judgment, and reliable instruction-following.
+      <b>Model Guidance:</b> Choose your strongest planning and judgment model. Orchestrator is the workflow manager: it plans, schedules background specialists, reconciles results, and verifies outcomes, so it needs reliable instruction-following and high-level technical judgment more than raw worker throughput.
     </td>
   </tr>
 </table>
@@ -233,7 +372,7 @@ If any agent fails to respond, check your provider authentication and config fil
   </tr>
   <tr>
     <td colspan="2">
-      <b>Recommended Models:</b> <code>cerebras/zai-glm-4.7</code> <code>fireworks-ai/accounts/fireworks/routers/kimi-k2p5-turbo</code> <code>openai/gpt-5.4-mini</code>
+      <b>Recommended Models:</b> <code>openai/gpt-5.3-codex</code> <code>cerebras/zai-glm-4.7</code> <code>fireworks-ai/accounts/fireworks/routers/kimi-k2p6-turbo</code>
     </td>
   </tr>
   <tr>
@@ -274,7 +413,7 @@ If any agent fails to respond, check your provider authentication and config fil
   </tr>
   <tr>
     <td colspan="2">
-      <b>Recommended Models:</b> <code>openai/gpt-5.5 (high)</code> <code>google/gemini-3.1-pro-preview (high)</code>
+      <b>Recommended Models:</b> <code>openai/gpt-5.5 (xhigh)</code> <code>anthropic/claude-fable-5</code> <code>anthropic/claude-opus-4-8 (xhigh)</code>
     </td>
   </tr>
   <tr>
@@ -364,7 +503,7 @@ If any agent fails to respond, check your provider authentication and config fil
   </tr>
   <tr>
     <td colspan="2">
-      <b>Recommended Models:</b> <code>cerebras/zai-glm-4.7</code> <code>fireworks-ai/accounts/fireworks/routers/kimi-k2p5-turbo</code> <code>openai/gpt-5.4-mini</code>
+      <b>Recommended Models:</b> <code>openai/gpt-5.3-codex</code> <code>cerebras/zai-glm-4.7</code> <code>fireworks-ai/accounts/fireworks/routers/kimi-k2p6-turbo</code>
     </td>
   </tr>
   <tr>
@@ -405,7 +544,7 @@ If any agent fails to respond, check your provider authentication and config fil
   </tr>
   <tr>
     <td colspan="2">
-      <b>Recommended Models:</b> <code>google/gemini-3.1-pro-preview</code> <code>kimi-for-coding/k2p5</code> 
+      <b>Recommended Models:</b> <code>google/gemini-3.5-flash</code> <code>moonshotai/kimi-k2.7-code</code>
     </td>
   </tr>
   <tr>
@@ -441,17 +580,17 @@ If any agent fails to respond, check your provider authentication and config fil
   </tr>
   <tr>
     <td colspan="2">
-      <b>Default Model:</b> <code>openai/gpt-5.4-mini</code>
+      <b>Default Model:</b> <code>openai/gpt-5.5 (low)</code>
     </td>
   </tr>
   <tr>
     <td colspan="2">
-      <b>Recommended Models:</b> <code>cerebras/zai-glm-4.7</code> <code>fireworks-ai/accounts/fireworks/routers/kimi-k2p5-turbo</code> <code>openai/gpt-5.4-mini</code>
+      <b>Recommended Models:</b> <code>openai/gpt-5.5 (low)</code> <code>anthropic/claude-sonnet-4-6</code>
     </td>
   </tr>
   <tr>
     <td colspan="2">
-      <b>Model Guidance:</b> Choose a fast, reliable coding model for routine, scoped implementation work. Fixer usually receives a concrete plan or bounded instructions from Orchestrator, making it a good place for efficient execution tasks such as tests, test updates, and straightforward code changes.
+      <b>Model Guidance:</b> Choose a reliable coding model for scoped implementation work. Fixer receives a concrete plan or bounded instructions from Orchestrator, making it a good place for efficient execution tasks and straightforward code changes.
     </td>
   </tr>
 </table>
@@ -504,12 +643,6 @@ If any agent fails to respond, check your provider authentication and config fil
 
 Use this section as a map: start with installation, then jump to features, configuration, or example presets depending on what you need.
 
-### 🚀 Start Here
-
-| Doc | What it covers |
-|-----|----------------|
-| **[Installation Guide](docs/installation.md)** | Install the plugin, use CLI flags, reset config, and troubleshoot setup |
-
 <a id="features-and-workflows"></a>
 
 ### ✨ Features & Workflows
@@ -517,26 +650,26 @@ Use this section as a map: start with installation, then jump to features, confi
 | Doc | What it covers |
 |-----|----------------|
 | **[Council](docs/council.md)** | Run multiple models in parallel and synthesize a single answer with `@council` |
-| **[Multiplexer Integration](docs/multiplexer-integration.md)** | Watch agents work live in Tmux or Zellij panes |
-| **[Session Management](docs/session-management.md)** | Reuse recent child-agent sessions with short aliases instead of starting over |
-| **[Session Goal](docs/session-goal.md)** | Pin a session objective with `/goal` so todos, delegation, and verification stay aligned |
-| **[Todo Continuation](docs/todo-continuation.md)** | Auto-continue orchestrator sessions with cooldowns and safety checks |
-| **[Preset Switching](docs/preset-switching.md)** | Switch agent model presets at runtime with `/preset` |
 | **[Custom Agents](docs/configuration.md#custom-agents)** | Define your own specialists with custom prompts, models, MCP access, and Orchestrator delegation rules |
-| **[Subtask](docs/subtask.md)** | Run a bounded child worker with `/subtask` and return a structured summary to the main session |
+| **[ACP Agents](docs/acp-agents.md)** | Connect external ACP-compatible agents such as Claude Code ACP or Gemini ACP as delegatable subagents |
+| **[Multiplexer Integration](docs/multiplexer-integration.md)** | Watch agents work live in Tmux or Zellij panes |
 | **[Codemap](docs/codemap.md)** | Generate hierarchical codemaps to understand large codebases faster |
 | **[Clonedeps](docs/clonedeps.md)** | Clone selected dependency source into an ignored local workspace for inspection |
+| **[Worktrees](docs/worktrees.md)** | Use `.slim/worktrees/` lanes for isolated parallel or risky coding work |
+| **[Preset Switching](docs/preset-switching.md)** | Switch agent model presets at runtime with `/preset` |
 | **[Interview](docs/interview.md)** | Turn rough ideas into a structured markdown spec through a browser-based Q&A flow |
-| **[Divoom Display](docs/divoom.md)** | Mirror orchestrator and specialist-agent activity to a Divoom MiniToo Bluetooth display |
+| **[Companion](docs/companion.md)** | Floating window companion for parsing, help, and types |
 
 ### ⚙️ Config & Reference
 
 | Doc | What it covers |
 |-----|----------------|
+| **[Installation Guide](docs/installation.md)** | Install the plugin, use CLI flags, reset config, and troubleshoot setup |
 | **[Configuration](docs/configuration.md)** | Config file locations, JSONC support, prompt overrides, and full option reference |
+| **[Background Orchestration](docs/background-orchestration.md)** | Scheduler-first orchestrator model built around native background subagents |
 | **[Maintainer Guide](docs/maintainers.md)** | Issue triage rules, label meanings, support routing, and repo maintenance workflow |
-| **[Skills](docs/skills.md)** | Bundled skills such as `simplify`, `codemap`, and `clonedeps` |
-| **[MCPs](docs/mcps.md)** | `websearch`, `context7`, `grep_app`, and how MCP permissions work per agent |
+| **[Skills](docs/skills.md)** | Bundled skills such as `simplify`, `codemap`, `clonedeps`, `deepwork`, `reflect`, `worktrees`, and `oh-my-opencode-slim` |
+| **[MCPs](docs/mcps.md)** | `websearch`, `context7`, `gh_grep`, and how MCP permissions work per agent |
 | **[Tools](docs/tools.md)** | Built-in tool capabilities like `webfetch`, LSP tools, code search, and formatters |
 
 ### 💡 Presets
@@ -556,7 +689,7 @@ Use this section as a map: start with installation, then jump to features, confi
   <p><sub>Every merged contribution leaves a mark on the realm.</sub></p>
 
   <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
-[![All Contributors](https://img.shields.io/badge/all_contributors-59-orange.svg?style=flat-square)](#contributors-)
+[![All Contributors](https://img.shields.io/badge/all_contributors-65-orange.svg?style=flat-square)](#contributors-)
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
 </div>
 
@@ -645,6 +778,14 @@ Use this section as a map: start with installation, then jump to features, confi
       <td align="center" valign="top" width="16.66%"><a href="https://github.com/Qesire"><img src="https://avatars.githubusercontent.com/u/102657430?v=4?s=100" width="100px;" alt="Knowingthesea_Qesire"/><br /><sub><b>Knowingthesea_Qesire</b></sub></a><br /><a href="https://github.com/alvinunreal/oh-my-opencode-slim/commits?author=Qesire" title="Code">💻</a></td>
       <td align="center" valign="top" width="16.66%"><a href="http://www.flyinghail.net/"><img src="https://avatars.githubusercontent.com/u/157430?v=4?s=100" width="100px;" alt="FENG Hao"/><br /><sub><b>FENG Hao</b></sub></a><br /><a href="https://github.com/alvinunreal/oh-my-opencode-slim/commits?author=flyinghail" title="Code">💻</a></td>
       <td align="center" valign="top" width="16.66%"><a href="https://github.com/smatheusblu"><img src="https://avatars.githubusercontent.com/u/5666794?v=4?s=100" width="100px;" alt="Matheus Nogueira Silveira"/><br /><sub><b>Matheus Nogueira Silveira</b></sub></a><br /><a href="https://github.com/alvinunreal/oh-my-opencode-slim/commits?author=smatheusblu" title="Code">💻</a></td>
+      <td align="center" valign="top" width="16.66%"><a href="https://github.com/sktr"><img src="https://avatars.githubusercontent.com/u/44969514?v=4?s=100" width="100px;" alt="sktr"/><br /><sub><b>sktr</b></sub></a><br /><a href="https://github.com/alvinunreal/oh-my-opencode-slim/commits?author=sktr" title="Code">💻</a></td>
+    </tr>
+    <tr>
+      <td align="center" valign="top" width="16.66%"><a href="https://github.com/bobbyunknown"><img src="https://avatars.githubusercontent.com/u/62272380?v=4?s=100" width="100px;" alt="Insomnia"/><br /><sub><b>Insomnia</b></sub></a><br /><a href="https://github.com/alvinunreal/oh-my-opencode-slim/commits?author=bobbyunknown" title="Code">💻</a></td>
+      <td align="center" valign="top" width="16.66%"><a href="https://github.com/andrescastane"><img src="https://avatars.githubusercontent.com/u/13487870?v=4?s=100" width="100px;" alt="Andres Castañeda"/><br /><sub><b>Andres Castañeda</b></sub></a><br /><a href="https://github.com/alvinunreal/oh-my-opencode-slim/commits?author=andrescastane" title="Code">💻</a></td>
+      <td align="center" valign="top" width="16.66%"><a href="https://zaradacht.com/"><img src="https://avatars.githubusercontent.com/u/24251016?v=4?s=100" width="100px;" alt="Zaradacht Taifour (Zack)"/><br /><sub><b>Zaradacht Taifour (Zack)</b></sub></a><br /><a href="https://github.com/alvinunreal/oh-my-opencode-slim/commits?author=Zaradacht" title="Code">💻</a></td>
+      <td align="center" valign="top" width="16.66%"><a href="https://github.com/fslse"><img src="https://avatars.githubusercontent.com/u/90545544?v=4?s=100" width="100px;" alt="fslse"/><br /><sub><b>fslse</b></sub></a><br /><a href="https://github.com/alvinunreal/oh-my-opencode-slim/commits?author=fslse" title="Code">💻</a></td>
+      <td align="center" valign="top" width="16.66%"><a href="https://github.com/linze0721"><img src="https://avatars.githubusercontent.com/u/178997622?v=4?s=100" width="100px;" alt="萧瑟"/><br /><sub><b>萧瑟</b></sub></a><br /><a href="https://github.com/alvinunreal/oh-my-opencode-slim/commits?author=linze0721" title="Code">💻</a></td>
     </tr>
   </tbody>
 </table>

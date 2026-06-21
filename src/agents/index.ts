@@ -1,10 +1,12 @@
 import type { AgentConfig as SDKAgentConfig } from '@opencode-ai/sdk/v2';
 import { getSkillPermissionsForAgent } from '../cli/skills';
 import {
+  AGENT_ALIASES,
   type AgentOverrideConfig,
   ALL_AGENT_NAMES,
   DEFAULT_DISABLED_AGENTS,
   DEFAULT_MODELS,
+  getAcpAgentNames,
   getAgentOverride,
   getCustomAgentNames,
   loadAgentPrompt,
@@ -37,11 +39,100 @@ type AgentFactory = (
 ) => AgentDefinition;
 
 const COUNCIL_TOOL_ALLOWED_AGENTS = new Set(['council']);
+const CANCEL_TASK_ALLOWED_AGENTS = new Set(['orchestrator']);
 const SAFE_AGENT_ALIAS_RE = /^[a-z][a-z0-9_-]*$/i;
 
 function normalizeDisplayName(displayName: string): string {
   const trimmed = displayName.trim();
   return trimmed.startsWith('@') ? trimmed.slice(1) : trimmed;
+}
+
+function getPrimaryModelFromOverride(
+  override: AgentOverrideConfig | undefined,
+): string | undefined {
+  const model = override?.model;
+  if (typeof model === 'string') {
+    return model;
+  }
+  if (Array.isArray(model) && model.length > 0) {
+    const first = model[0];
+    return typeof first === 'string' ? first : first?.id;
+  }
+  return undefined;
+}
+
+function getActivePresetPrimaryModel(
+  config: PluginConfig | undefined,
+): string | undefined {
+  const activePreset = config?.preset
+    ? config.presets?.[config.preset]
+    : undefined;
+  if (!activePreset) {
+    return undefined;
+  }
+
+  const orchestratorModel = getPrimaryModelFromOverride(
+    activePreset.orchestrator,
+  );
+  if (orchestratorModel) {
+    return orchestratorModel;
+  }
+
+  for (const name of SUBAGENT_NAMES) {
+    const model = getPrimaryModelFromOverride(activePreset[name]);
+    if (model) {
+      return model;
+    }
+  }
+
+  return undefined;
+}
+
+function getConfigPrimaryModel(
+  config: PluginConfig | undefined,
+): string | undefined {
+  return getActivePresetPrimaryModel(config);
+}
+
+function buildAcpAgentDefinition(
+  name: string,
+  config: NonNullable<PluginConfig['acpAgents']>[string],
+  fallbackModel?: string,
+): AgentDefinition {
+  const description =
+    config.description ?? `External ACP agent '${name}' via ${config.command}`;
+  const prompt =
+    config.prompt ??
+    [
+      `You are the ${name} ACP wrapper agent.`,
+      '',
+      'Your only job is to send the user task to the configured external ACP agent using the acp_run tool, then return the ACP agent result.',
+      `Always call acp_run with agent: ${JSON.stringify(name)} and pass the full user task as prompt.`,
+      'Do not edit files yourself unless the ACP result explicitly asks you to report a local follow-up to the orchestrator.',
+    ].join('\n');
+
+  return {
+    name,
+    description,
+    config: {
+      model: config.wrapperModel ?? fallbackModel ?? DEFAULT_MODELS.oracle,
+      temperature: 0,
+      prompt,
+      permission: {
+        read: 'deny',
+        edit: 'deny',
+        bash: 'deny',
+        task: 'deny',
+        glob: 'deny',
+        grep: 'deny',
+        list: 'deny',
+        webfetch: 'deny',
+        question: 'deny',
+        skill: 'deny',
+        acp_run: 'allow',
+      },
+    },
+  } as AgentDefinition;
 }
 
 function isSafeDisplayName(displayName: string): boolean {
@@ -119,14 +210,12 @@ function buildCustomAgentDefinition(
   fileAppendPrompt?: string,
 ): AgentDefinition {
   const basePrompt = override.prompt ?? `You are the ${name} specialist.`;
+  const primaryModel = getPrimaryModelFromOverride(override);
 
   return {
     name,
     config: {
-      model:
-        typeof override.model === 'string'
-          ? override.model
-          : (DEFAULT_MODELS.orchestrator ?? DEFAULT_MODELS.oracle),
+      model: primaryModel ?? DEFAULT_MODELS.oracle,
       temperature: 0.2,
       prompt: resolvePrompt(basePrompt, filePrompt, fileAppendPrompt),
     },
@@ -162,6 +251,7 @@ function injectDisplayNames(
 function applyDefaultPermissions(
   agent: AgentDefinition,
   configuredSkills?: string[],
+  disabledSkills?: string[],
 ): void {
   const existing = (agent.config.permission ?? {}) as Record<
     string,
@@ -172,6 +262,7 @@ function applyDefaultPermissions(
   const skillPermissions = getSkillPermissionsForAgent(
     agent.name,
     configuredSkills,
+    disabledSkills,
   );
 
   // Respect explicit deny on question (councillor)
@@ -179,11 +270,15 @@ function applyDefaultPermissions(
   const councilSessionPerm = COUNCIL_TOOL_ALLOWED_AGENTS.has(agent.name)
     ? (existing.council_session ?? 'allow')
     : 'deny';
+  const cancelTaskPerm = CANCEL_TASK_ALLOWED_AGENTS.has(agent.name)
+    ? (existing.cancel_task ?? 'allow')
+    : 'deny';
 
   agent.config.permission = {
     ...existing,
     question: questionPerm,
     council_session: councilSessionPerm,
+    cancel_task: cancelTaskPerm,
     // Apply skill permissions as nested object under 'skill' key
     skill: {
       ...(typeof existing.skill === 'object' ? existing.skill : {}),
@@ -228,6 +323,8 @@ export function createAgents(config?: PluginConfig): AgentDefinition[] {
     disabled.add('council');
   }
 
+  const primaryModel = getConfigPrimaryModel(config);
+
   // TEMP: If fixer has no config, inherit from librarian's model to avoid breaking
   // existing users who don't have fixer in their config yet
   const getModelForAgent = (name: SubagentName): string => {
@@ -240,10 +337,11 @@ export function createAgents(config?: PluginConfig): AgentDefinition[] {
       } else {
         librarianModel = librarianOverride;
       }
-      return librarianModel ?? (DEFAULT_MODELS.librarian as string);
+      return (
+        librarianModel ?? primaryModel ?? (DEFAULT_MODELS.librarian as string)
+      );
     }
-    // Subagents always have a defined default model; cast is safe here
-    return DEFAULT_MODELS[name] as string;
+    return primaryModel ?? (DEFAULT_MODELS[name] as string);
   };
 
   // 1. Gather all sub-agent definitions with custom prompts
@@ -295,13 +393,41 @@ export function createAgents(config?: PluginConfig): AgentDefinition[] {
     ];
   });
 
+  const acpAgentNames = getAcpAgentNames(config)
+    .map(normalizeCustomAgentName)
+    .filter((name) => name.length > 0)
+    .filter((name) => {
+      if (!SAFE_AGENT_ALIAS_RE.test(name)) {
+        throw new Error(
+          `ACP agent name '${name}' must match /^[a-z][a-z0-9_-]*$/i`,
+        );
+      }
+      if (isKnownAgentName(name) || AGENT_ALIASES[name] !== undefined) {
+        throw new Error(
+          `ACP agent '${name}' conflicts with a built-in agent name or alias`,
+        );
+      }
+      if (customAgentNames.includes(name)) {
+        throw new Error(
+          `ACP agent '${name}' conflicts with a custom agent of the same name`,
+        );
+      }
+      return !disabled.has(name);
+    });
+
+  const protoAcpAgents = acpAgentNames.map((name) => {
+    const acp = config?.acpAgents?.[name];
+    if (!acp) throw new Error(`ACP agent '${name}' is missing config`);
+    return buildAcpAgentDefinition(name, acp, primaryModel);
+  });
+
   // 2. Apply overrides and default permissions to built-in subagents
   const builtInSubAgents = protoSubAgents.map((agent) => {
     const override = getAgentOverride(config, agent.name);
     if (override) {
       applyOverrides(agent, override);
     }
-    applyDefaultPermissions(agent, override?.skills);
+    applyDefaultPermissions(agent, override?.skills, config?.disabled_skills);
     return agent;
   });
 
@@ -325,11 +451,20 @@ export function createAgents(config?: PluginConfig): AgentDefinition[] {
     if (override) {
       applyOverrides(agent, override);
     }
-    applyDefaultPermissions(agent, override?.skills);
+    applyDefaultPermissions(agent, override?.skills, config?.disabled_skills);
     return agent;
   });
 
-  const allSubAgents = [...builtInSubAgents, ...customSubAgents];
+  const acpSubAgents = protoAcpAgents.map((agent) => {
+    applyDefaultPermissions(agent, undefined, config?.disabled_skills);
+    return agent;
+  });
+
+  const allSubAgents = [
+    ...builtInSubAgents,
+    ...customSubAgents,
+    ...acpSubAgents,
+  ];
 
   // 3. Create Orchestrator (with its own overrides and custom prompts)
   // DEFAULT_MODELS.orchestrator is undefined; model is resolved via override or
@@ -344,7 +479,11 @@ export function createAgents(config?: PluginConfig): AgentDefinition[] {
     orchestratorPrompts.appendPrompt,
     disabled,
   );
-  applyDefaultPermissions(orchestrator, orchestratorOverride?.skills);
+  applyDefaultPermissions(
+    orchestrator,
+    orchestratorOverride?.skills,
+    config?.disabled_skills,
+  );
   if (orchestratorOverride) {
     applyOverrides(orchestrator, orchestratorOverride);
   }
@@ -368,6 +507,19 @@ export function createAgents(config?: PluginConfig): AgentDefinition[] {
     })
     .filter((prompt): prompt is string => Boolean(prompt));
 
+  const acpOrchestratorPrompts = acpSubAgents.map((agent) => {
+    const acp = config?.acpAgents?.[agent.name];
+    if (acp?.orchestratorPrompt) return acp.orchestratorPrompt;
+    return [
+      `@${agent.name}`,
+      `- Lane: External ACP-connected agent (${acp?.command ?? 'unknown command'})`,
+      `- Role: ${agent.description ?? `External ACP agent ${agent.name}`}`,
+      '- **Delegate when:** The user explicitly asks for this ACP-backed agent, or the task matches its role and benefits from software/subscription-specific capabilities outside OpenCode.',
+      '- **Do not delegate when:** The built-in specialists can handle the task more directly or local file ownership would conflict with another writer lane.',
+      '- **Result handling:** Treat returned output as external-agent work. Reconcile any reported file changes before continuing.',
+    ].join('\n');
+  });
+
   // Validate display names
   const usedDisplayNames = new Set<string>();
   for (const [, displayName] of displayNameMap) {
@@ -387,7 +539,8 @@ export function createAgents(config?: PluginConfig): AgentDefinition[] {
   for (const displayName of usedDisplayNames) {
     if (
       (ALL_AGENT_NAMES as readonly string[]).includes(displayName) ||
-      customAgentNames.includes(displayName)
+      customAgentNames.includes(displayName) ||
+      acpAgentNames.includes(displayName)
     ) {
       throw new Error(
         `displayName '${displayName}' conflicts with an agent name`,
@@ -398,8 +551,13 @@ export function createAgents(config?: PluginConfig): AgentDefinition[] {
   // Inject display names into orchestrator prompt (complete map)
   injectDisplayNames(orchestrator, displayNameMap);
 
-  if (customOrchestratorPrompts.length > 0) {
-    const rewrittenPrompts = customOrchestratorPrompts.map((promptText) => {
+  const extraOrchestratorPrompts = [
+    ...customOrchestratorPrompts,
+    ...acpOrchestratorPrompts,
+  ];
+
+  if (extraOrchestratorPrompts.length > 0) {
+    const rewrittenPrompts = extraOrchestratorPrompts.map((promptText) => {
       let text = promptText;
       for (const [internalName, displayName] of displayNameMap) {
         text = text.replace(
@@ -519,8 +677,12 @@ export function getEnabledAgentNames(config?: PluginConfig): string[] {
   const customAgentNames = getCustomAgentNames(config).filter(
     (name) => !disabled.has(name),
   );
+  const acpAgentNames = getAcpAgentNames(config).filter(
+    (name) => !disabled.has(name),
+  );
   return [
     ...ALL_AGENT_NAMES.filter((name) => !disabled.has(name)),
     ...customAgentNames,
+    ...acpAgentNames,
   ];
 }
