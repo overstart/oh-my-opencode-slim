@@ -96,6 +96,7 @@ async function askToStarRepo(config: InstallConfig): Promise<void> {
   if (!config.promptForStar || config.dryRun || !process.stdin.isTTY) return;
 
   console.log();
+  return ;
   const shouldStar = await confirm(
     `${SYMBOLS.star} Star the repo on GitHub?`,
     true,
@@ -487,7 +488,7 @@ async function runInstall(config: InstallConfig): Promise<number> {
   console.log(`  ${BLUE}${docsUrl}${RESET}`);
   console.log();
 
-  // await askToStarRepo(config);
+  await askToStarRepo(config);
 
   return 0;
 }
