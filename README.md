@@ -44,24 +44,6 @@ To explore the agents themselves, see **[Meet the Pantheon](#meet-the-pantheon)*
   <a href="https://github.com/alvinunreal/lazyskills"><b>Explore LazySkills →</b></a>
 </p>
 
-### 🏛️ Support
-
-My sponsorship goal is **$200/month**.
-
-That covers my Codex subscription, so I can keep building and testing oh-my-opencode-slim without worrying about token costs.
-
-<p align="center">
-  <a href="https://github.com/sponsors/alvinunreal">Sponsor this project</a>
-</p>
-
-### ✨ Sponsors
-
-<p align="center">
-  <a href="https://github.com/sponsors/alvinunreal">
-    <img src="./sponsors.svg" alt="Sponsors" width="800">
-  </a>
-</p>
-
 ### What Users Say
 
 > “Task management went from 5/10 to 8-9/10 easily. The Orchestrator sends
@@ -160,6 +142,18 @@ The default generated configuration includes both `openai` and `opencode-go` pre
 ### For Alternative Providers
 
 To use custom providers or a mixed-provider setup, use **[Configuration](docs/configuration.md)** for the full reference. If you want a ready-made starting point, check the **[Author's Preset](docs/authors-preset.md)** and **[$30 Preset](docs/thirty-dollars-preset.md)** - the `$30` preset is the best cheap setup.
+
+### Temporarily Disable the Plugin
+
+Set `OH_MY_OPENCODE_SLIM_DISABLE=1` when starting OpenCode to make the plugin
+return without registering agents, tools, MCPs, hooks, Companion, or the TUI
+sidebar:
+
+```bash
+OH_MY_OPENCODE_SLIM_DISABLE=1 opencode
+```
+
+Truthy values are `1`, `true`, `yes`, and `on`.
 
 ### ✅ Verify Your Setup
 
@@ -689,7 +683,7 @@ Use this section as a map: start with installation, then jump to features, confi
   <p><sub>Every merged contribution leaves a mark on the realm.</sub></p>
 
   <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
-[![All Contributors](https://img.shields.io/badge/all_contributors-65-orange.svg?style=flat-square)](#contributors-)
+[![All Contributors](https://img.shields.io/badge/all_contributors-66-orange.svg?style=flat-square)](#contributors-)
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
 </div>
 
@@ -786,6 +780,7 @@ Use this section as a map: start with installation, then jump to features, confi
       <td align="center" valign="top" width="16.66%"><a href="https://zaradacht.com/"><img src="https://avatars.githubusercontent.com/u/24251016?v=4?s=100" width="100px;" alt="Zaradacht Taifour (Zack)"/><br /><sub><b>Zaradacht Taifour (Zack)</b></sub></a><br /><a href="https://github.com/alvinunreal/oh-my-opencode-slim/commits?author=Zaradacht" title="Code">💻</a></td>
       <td align="center" valign="top" width="16.66%"><a href="https://github.com/fslse"><img src="https://avatars.githubusercontent.com/u/90545544?v=4?s=100" width="100px;" alt="fslse"/><br /><sub><b>fslse</b></sub></a><br /><a href="https://github.com/alvinunreal/oh-my-opencode-slim/commits?author=fslse" title="Code">💻</a></td>
       <td align="center" valign="top" width="16.66%"><a href="https://github.com/linze0721"><img src="https://avatars.githubusercontent.com/u/178997622?v=4?s=100" width="100px;" alt="萧瑟"/><br /><sub><b>萧瑟</b></sub></a><br /><a href="https://github.com/alvinunreal/oh-my-opencode-slim/commits?author=linze0721" title="Code">💻</a></td>
+      <td align="center" valign="top" width="16.66%"><a href="https://github.com/SisyphusZheng"><img src="https://avatars.githubusercontent.com/u/146103794?v=4?s=100" width="100px;" alt="Zhi"/><br /><sub><b>Zhi</b></sub></a><br /><a href="https://github.com/alvinunreal/oh-my-opencode-slim/commits?author=SisyphusZheng" title="Code">💻</a></td>
     </tr>
   </tbody>
 </table>
