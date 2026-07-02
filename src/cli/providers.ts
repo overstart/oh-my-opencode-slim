@@ -69,7 +69,7 @@ export const MODEL_MAPPINGS = {
   },
   volcengine: {
     orchestrator: { model: 'volcengine-plan/deepseek-v4-pro' },
-    oracle: { model: 'volcengine-plan/deepseek-v4-pro', variant: 'high' },
+    oracle: { model: 'volcengine-plan/glm-5.2', variant: 'high' },
     council: { model: 'volcengine-plan/deepseek-v4-pro', variant: 'medium' },
     librarian: { model: 'volcengine-plan/deepseek-v4-flash', variant: 'low' },
     explorer: { model: 'volcengine-plan/deepseek-v4-flash', variant: 'low' },
