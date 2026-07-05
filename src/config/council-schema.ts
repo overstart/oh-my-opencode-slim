@@ -1,4 +1,10 @@
 import { z } from 'zod';
+import {
+  type CouncillorModelEntry,
+  normalizeCouncillorModels,
+} from '../utils/councillor-models';
+
+export type { CouncillorModelEntry };
 
 /**
  * Validates model IDs in "provider/model" format.
@@ -11,6 +17,27 @@ const ModelIdSchema = z
     'Expected provider/model format (e.g. "openai/gpt-5.4-mini")',
   );
 
+const CouncillorModelEntrySchema = z.object({
+  id: ModelIdSchema,
+  variant: z.string().optional(),
+});
+
+/**
+ * A councillor's model: either a single "provider/model" string, or an
+ * ordered fallback chain (array of strings and/or { id, variant } entries)
+ * tried in order until one responds.
+ */
+const CouncillorModelSchema = z
+  .union([
+    ModelIdSchema,
+    z.array(z.union([ModelIdSchema, CouncillorModelEntrySchema])).min(1),
+  ])
+  .describe(
+    'Model ID in provider/model format (e.g. "openai/gpt-5.4-mini"), or an ' +
+      'ordered fallback chain (array of model IDs or { id, variant } entries) ' +
+      'tried in order until one responds.',
+  );
+
 /**
  * Configuration for a single councillor within a preset.
  * Each councillor is an independent LLM that processes the same prompt.
@@ -18,19 +45,31 @@ const ModelIdSchema = z
  * Councillors run as agent sessions with read-only codebase access
  * (read, glob, grep, lsp, list). They can examine the codebase but
  * cannot modify files or spawn subagents.
+ *
+ * `model` accepts a single ID or an ordered fallback chain. The parsed config
+ * exposes `models` (the normalized chain) plus `model` (the primary, for
+ * backward compatibility).
  */
-export const CouncillorConfigSchema = z.object({
-  model: ModelIdSchema.describe(
-    'Model ID in provider/model format (e.g. "openai/gpt-5.4-mini")',
-  ),
-  variant: z.string().optional(),
-  prompt: z
-    .string()
-    .optional()
-    .describe(
-      'Optional role/guidance injected into the councillor user prompt',
-    ),
-});
+export const CouncillorConfigSchema = z
+  .object({
+    model: CouncillorModelSchema,
+    variant: z.string().optional(),
+    prompt: z
+      .string()
+      .optional()
+      .describe(
+        'Optional role/guidance injected into the councillor user prompt',
+      ),
+  })
+  .transform((c) => {
+    const models = normalizeCouncillorModels(c.model, c.variant);
+    return {
+      model: models[0].id,
+      variant: c.variant,
+      prompt: c.prompt,
+      models,
+    };
+  });
 
 export type CouncillorConfig = z.infer<typeof CouncillorConfigSchema>;
 
@@ -47,7 +86,7 @@ export const CouncilPresetSchema = z
     const councillors: Record<string, CouncillorConfig> = {};
 
     for (const [key, raw] of Object.entries(entries)) {
-      // Silently skip the legacy "master" key — no longer parsed as a
+      // Silently skip the legacy "master" key - no longer parsed as a
       // councillor. Old configs with per-preset master overrides won't
       // error, but the override has no effect.
       if (key === 'master') continue;
@@ -143,14 +182,14 @@ export const CouncilConfigSchema = z
         'Number of retry attempts for councillors that return empty responses ' +
           '(e.g. due to provider rate limiting). Default: 3 retries.',
       ),
-    // Deprecated fields — accepted for backward compatibility but ignored.
+    // Deprecated fields - accepted for backward compatibility but ignored.
     // The council agent now synthesizes directly; no separate master session.
-    // Uses permissive schemas since the values are discarded — strict
+    // Uses permissive schemas since the values are discarded - strict
     // validation would break old configs with non-standard model IDs.
     master: z
       .unknown()
       .optional()
-      .describe('DEPRECATED — ignored. Council agent synthesizes directly.'),
+      .describe('DEPRECATED - ignored. Council agent synthesizes directly.'),
   })
   .transform((data) => {
     // Detect deprecated fields and attach warning for consumers

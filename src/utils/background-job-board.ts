@@ -17,6 +17,7 @@ export interface BackgroundJobRecord {
   objective?: string;
   state: BackgroundJobState;
   timedOut: boolean;
+  recoverableAfterLiveBusy: boolean;
   statusUncertain: boolean;
   cancellationRequested: boolean;
   terminalUnreconciled: boolean;
@@ -126,6 +127,7 @@ export class BackgroundJobBoard {
         objective: input.objective ?? existing.objective,
         state: 'running',
         timedOut: false,
+        recoverableAfterLiveBusy: false,
         statusUncertain: false,
         cancellationRequested: false,
         terminalUnreconciled: false,
@@ -152,6 +154,7 @@ export class BackgroundJobBoard {
       objective: input.objective,
       state: 'running',
       timedOut: false,
+      recoverableAfterLiveBusy: false,
       statusUncertain: false,
       cancellationRequested: false,
       terminalUnreconciled: false,
@@ -192,6 +195,12 @@ export class BackgroundJobBoard {
       ...existing,
       state: input.state,
       timedOut: input.timedOut ?? false,
+      recoverableAfterLiveBusy:
+        input.state !== 'running'
+          ? false
+          : input.timedOut === true
+            ? false
+            : existing.recoverableAfterLiveBusy,
       statusUncertain: input.statusUncertain ?? false,
       terminalUnreconciled: terminal ? true : existing.terminalUnreconciled,
       updatedAt: now,
@@ -254,6 +263,10 @@ export class BackgroundJobBoard {
       ...existing,
       updatedAt: now,
       lastLiveBusyAt: now,
+      timedOut: false,
+      recoverableAfterLiveBusy:
+        existing.recoverableAfterLiveBusy || existing.timedOut,
+      statusUncertain: false,
     };
 
     this.jobs.set(taskID, updated);
@@ -308,6 +321,7 @@ export class BackgroundJobBoard {
       ...existing,
       state: 'cancelled',
       timedOut: false,
+      recoverableAfterLiveBusy: false,
       statusUncertain: false,
       cancellationRequested: true,
       terminalUnreconciled: true,
@@ -325,6 +339,39 @@ export class BackgroundJobBoard {
 
   get(taskID: string): BackgroundJobRecord | undefined {
     return this.jobs.get(taskID);
+  }
+
+  field<K extends keyof BackgroundJobRecord>(
+    taskID: string,
+    key: K,
+  ): BackgroundJobRecord[K] | undefined {
+    return this.get(taskID)?.[key];
+  }
+
+  isRunning(taskID: string): boolean {
+    const job = this.get(taskID);
+    return job?.state === 'running';
+  }
+
+  isTerminalUnreconciled(taskID: string): boolean {
+    const job = this.get(taskID);
+    return !!job?.terminalUnreconciled;
+  }
+
+  getResultSummary(taskID: string): string | undefined {
+    return this.field(taskID, 'resultSummary');
+  }
+
+  getLastLiveBusyAt(taskID: string): number | undefined {
+    return this.field(taskID, 'lastLiveBusyAt');
+  }
+
+  getParentSessionID(taskID: string): string | undefined {
+    return this.field(taskID, 'parentSessionID');
+  }
+
+  getState(taskID: string): BackgroundJobState | undefined {
+    return this.field(taskID, 'state');
   }
 
   resolve(
@@ -348,6 +395,20 @@ export class BackgroundJobBoard {
     return job;
   }
 
+  resolveRecoverable(
+    parentSessionID: string,
+    taskIDOrAlias: string,
+    agent?: string,
+  ): BackgroundJobRecord | undefined {
+    const job = this.resolve(parentSessionID, taskIDOrAlias);
+    if (!job) return undefined;
+    if (agent && job.agent !== agent) return undefined;
+    if (job.state !== 'running' || !job.recoverableAfterLiveBusy) {
+      return undefined;
+    }
+    return job;
+  }
+
   markUsed(parentSessionID: string, key: string, now = Date.now()): void {
     const job = this.resolve(parentSessionID, key);
     if (!job) return;
@@ -366,8 +427,11 @@ export class BackgroundJobBoard {
     for (const file of files) {
       const previous = existing.get(file.path);
       if (previous) {
-        previous.lineCount = Math.max(previous.lineCount, file.lineCount);
-        previous.lastReadAt = Math.max(previous.lastReadAt, file.lastReadAt);
+        existing.set(file.path, {
+          ...previous,
+          lineCount: Math.max(previous.lineCount, file.lineCount),
+          lastReadAt: Math.max(previous.lastReadAt, file.lastReadAt),
+        });
       } else {
         existing.set(file.path, { ...file });
       }
@@ -423,7 +487,10 @@ export class BackgroundJobBoard {
     return [
       '### Background Job Board',
       'SENTINEL: background-job-board-v2',
-      'Do not poll running jobs. Wait for hook-driven completion, or use cancel_task only for explicit cancellation. Reconcile terminal jobs before final response. Reuse only completed sessions for the same specialist/context; never reuse cancelled or errored sessions.',
+      'Do not poll running jobs. Wait for hook-driven completion, or use cancel_task only for explicit cancellation. Reconcile terminal jobs before final response.',
+      'Completed or reconciled sessions are reusable by alias for the same specialist/context.',
+      'Timed-out running sessions are recoverable by alias for safe resume after a live busy signal.',
+      'Cancelled or errored sessions are not reusable.',
       '',
       '#### Active / Unreconciled',
       ...(active.length > 0

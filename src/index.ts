@@ -184,7 +184,7 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
       const presetAgents = config.presets[runtimePreset];
       config.agents = deepMerge(config.agents, presetAgents);
     } else if (runtimePreset) {
-      // Preset was deleted from config since last switch — clear stale state
+      // Preset was deleted from config since last switch - clear stale state
       setActiveRuntimePreset(null);
     }
 
@@ -471,7 +471,7 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
           'orchestrator';
       }
 
-      // Merge Agent configs — per-agent shallow merge to preserve
+      // Merge Agent configs - per-agent shallow merge to preserve
       // user-supplied fields (e.g. tools, permission) from opencode.json
       if (!opencodeConfig.agent) {
         opencodeConfig.agent = { ...agents };
@@ -506,7 +506,7 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
           if (models.length === 0) continue;
 
           // Use the first model in the model array. Not all providers
-          // require entries in opencodeConfig.provider — some are loaded
+          // require entries in opencodeConfig.provider - some are loaded
           // automatically by opencode (e.g. github-copilot, openrouter).
           // We cannot distinguish these from truly unconfigured providers
           // at config-hook time, so we cannot gate on the provider config
@@ -517,12 +517,18 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
             | Record<string, unknown>
             | undefined;
           if (entry) {
-            entry.model = chosen.id;
-            if (chosen.variant) {
-              entry.variant = chosen.variant;
+            // Only apply model array resolution if no user-selected model
+            // exists. A user-selected model (via /model command) takes
+            // precedence over the config's fallback chain to preserve
+            // runtime selections and avoid breaking provider cache.
+            if (entry.model === undefined) {
+              entry.model = chosen.id;
+              if (chosen.variant) {
+                entry.variant = chosen.variant;
+              }
             }
           } else {
-            // Agent exists in slim but not in opencodeConfig.agent —
+            // Agent exists in slim but not in opencodeConfig.agent -
             // create entry
             (configAgent as Record<string, unknown>)[agentName] = {
               model: chosen.id,
@@ -836,6 +842,15 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
         },
       );
 
+      await postFileToolNudgeHook.event(
+        input as {
+          event: {
+            type: string;
+            properties?: { info?: { id?: string }; sessionID?: string };
+          };
+        },
+      );
+
       if (
         event.type === 'permission.asked' ||
         event.type === 'question.asked'
@@ -1031,6 +1046,12 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
             (output.system[0] ? `\n\n${output.system[0]}` : '');
         }
       }
+
+      // Inject ephemeral post-file-tool-nudge reminder
+      await postFileToolNudgeHook['experimental.chat.system.transform'](
+        input,
+        output,
+      );
 
       // Collapse to single system message for provider compatibility.
       // Some providers (e.g. Qwen via VLLM/DashScope) reject multiple

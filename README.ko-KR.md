@@ -86,9 +86,36 @@ Install and configure oh-my-opencode-slim: https://raw.githubusercontent.com/alv
 bunx oh-my-opencode-slim@latest install
 ```
 
+### Master 브랜치에서 실행하기
+
+최신 코드를 사용하거나, 버그를 고치거나, 로컬에서 개발하고 기여하려면 이
+방식을 사용하세요:
+
+```bash
+git clone https://github.com/alvinunreal/oh-my-opencode-slim.git ~/repos/oh-my-opencode-slim
+cd ~/repos/oh-my-opencode-slim
+bun install
+bun run build
+bun dist/cli/index.js install
+```
+
+인스톨러는 로컬 저장소 경로를 `~/.config/opencode/opencode.json`의
+`plugin` 배열에 추가하므로, OpenCode는 해당 폴더에서 플러그인을 로드합니다.
+나중에 업데이트하려면:
+
+```bash
+cd ~/repos/oh-my-opencode-slim
+git pull
+bun install
+bun run build
+```
+
 ### 시작하기
 
 인스톨러는 OpenAI와 OpenCode Go 프리셋을 모두 생성하며, 기본적으로 OpenAI가 활성화됩니다.
+
+> [!TIP]
+> 모델과 에이전트는 자신의 워크플로에 맞게 자유롭게 조정하세요. 기본 프리셋은 시작점일 뿐이며, 이 플러그인은 깊은 유연성과 커스터마이징을 제공하도록 설계되었습니다.
 
 설치 중 OpenCode Go를 활성화하려면 `bunx oh-my-opencode-slim@latest install --preset=opencode-go`를 실행하거나, 설치 후 `~/.config/opencode/oh-my-opencode-slim.json`에서 기본 프리셋 이름을 변경하세요.
 
@@ -130,12 +157,11 @@ bunx oh-my-opencode-slim@latest install
       "fixer": { "model": "openai/gpt-5.5", "variant": "low", "skills": [], "mcps": [] }
     },
     "opencode-go": {
-      "orchestrator": { "model": "opencode-go/glm-5.1", "skills": [ "*" ], "mcps": [ "*", "!context7" ] },
-      "oracle": { "model": "opencode-go/deepseek-v4-pro", "variant": "max", "skills": ["simplify"], "mcps": [] },
-      "council": { "model": "opencode-go/deepseek-v4-pro", "variant": "high", "skills": [], "mcps": [] },
-      "librarian": { "model": "opencode-go/minimax-m2.7", "skills": [], "mcps": [ "websearch", "context7", "gh_grep" ] },
-      "explorer": { "model": "opencode-go/minimax-m2.7", "skills": [], "mcps": [] },
-      "designer": { "model": "opencode-go/kimi-k2.6", "variant": "medium", "skills": [], "mcps": [] },
+      "orchestrator": { "model": "opencode-go/glm-5.2", "skills": [ "*" ], "mcps": [ "*", "!context7" ] },
+      "oracle": { "model": "opencode-go/qwen3.7-max", "variant": "max", "skills": ["simplify"], "mcps": [] },
+      "librarian": { "model": "opencode-go/deepseek-v4-flash", "skills": [], "mcps": [ "websearch", "context7", "gh_grep" ] },
+      "explorer": { "model": "opencode-go/deepseek-v4-flash", "skills": [], "mcps": [] },
+      "designer": { "model": "opencode-go/kimi-k2.7-code", "variant": "medium", "skills": [], "mcps": [] },
       "fixer": { "model": "opencode-go/deepseek-v4-flash", "variant": "high", "skills": [], "mcps": [] }
     }
   }
@@ -173,12 +199,12 @@ ping all agents
 
 V2는 oh-my-opencode-slim을 스케줄러 중심의 멀티 에이전트 워크플로 시스템으로 바꿉니다. Orchestrator는 계획, 위임, 결과 조정, 검증에 집중하고, 전문가들은 각자의 lane에서 작업합니다.
 
-- **[백그라운드 에이전트](#백그라운드-에이전트)** — Orchestrator가 전문가를 백그라운드 작업으로 디스패치하고, 작업/세션 ID를 추적하며, 완료 이벤트를 기다린 뒤 결과를 조정합니다.
-- **[Companion](#companion)** — 선택 사항인 플로팅 데스크톱 창이 병렬 백그라운드 전문가를 포함해 현재 활성 에이전트를 보여줍니다.
-- **[Deepwork](#deepwork)** — 대규모, 다중 파일, 위험도가 높거나 단계적인 코딩 작업을 위한 구조화된 워크플로입니다. 지속적인 계획 파일과 Oracle 리뷰 게이트를 사용합니다.
-- **[Reflect](#reflect)** — 반복되는 작업 패턴을 돌아보고 재사용 가능한 skill, 에이전트, 명령, 설정 규칙, 프롬프트 규칙, 프로젝트 playbook을 제안합니다.
-- **[Worktrees](#worktrees)** — 복잡하거나 위험하거나 병렬로 진행되는 작업을 위해 Git worktree를 안전 프로토콜이 있는 격리된 코딩 lane으로 관리합니다.
-- **[oh-my-opencode-slim Skill](#oh-my-opencode-slim-skill)** — 모델, 프롬프트, 커스텀 에이전트, MCP 접근, 프리셋, 플러그인 동작을 안전하게 조정하는 번들 설정 skill입니다.
+- **[백그라운드 에이전트](#백그라운드-에이전트)** - Orchestrator가 전문가를 백그라운드 작업으로 디스패치하고, 작업/세션 ID를 추적하며, 완료 이벤트를 기다린 뒤 결과를 조정합니다.
+- **[Companion](#companion)** - 선택 사항인 플로팅 데스크톱 창이 병렬 백그라운드 전문가를 포함해 현재 활성 에이전트를 보여줍니다.
+- **[Deepwork](#deepwork)** - 대규모, 다중 파일, 위험도가 높거나 단계적인 코딩 작업을 위한 구조화된 워크플로입니다. 지속적인 계획 파일과 Oracle 리뷰 게이트를 사용합니다.
+- **[Reflect](#reflect)** - 반복되는 작업 패턴을 돌아보고 재사용 가능한 skill, 에이전트, 명령, 설정 규칙, 프롬프트 규칙, 프로젝트 playbook을 제안합니다.
+- **[Worktrees](#worktrees)** - 복잡하거나 위험하거나 병렬로 진행되는 작업을 위해 Git worktree를 안전 프로토콜이 있는 격리된 코딩 lane으로 관리합니다.
+- **[oh-my-opencode-slim Skill](#oh-my-opencode-slim-skill)** - 모델, 프롬프트, 커스텀 에이전트, MCP 접근, 프리셋, 플러그인 동작을 안전하게 조정하는 번들 설정 skill입니다.
 
 #### 백그라운드 에이전트
 
@@ -413,7 +439,7 @@ Worktrees는 Git worktree를 `.slim/worktrees/<slug>/` 아래의 안전하고 �
   </tr>
   <tr>
     <td colspan="2">
-      <b>기본 설정:</b> <code>Config-driven</code> — Council 구성원은 <code>council.presets</code>에서 가져오고, Council 에이전트 모델은 일반 <code>council</code> 에이전트 설정에서 가져옵니다
+      <b>기본 설정:</b> <code>Config-driven</code> - Council 구성원은 <code>council.presets</code>에서 가져오고, Council 에이전트 모델은 일반 <code>council</code> 에이전트 설정에서 가져옵니다
     </td>
   </tr>
   <tr>
@@ -568,11 +594,11 @@ Worktrees는 Git worktree를 `.slim/worktrees/<slug>/` 아래의 안전하고 �
     </td>
     <td width="70%" valign="top">
 
-**읽기 전용 시각 분석** — 이미지, 스크린샷, PDF, 다이어그램을 해석합니다. 원시 파일 바이트를 메인 컨텍스트 윈도우에 로드하지 않고, 구조화된 관찰 결과를 오케스트레이터에 반환합니다.
+**읽기 전용 시각 분석** - 이미지, 스크린샷, PDF, 다이어그램을 해석합니다. 원시 파일 바이트를 메인 컨텍스트 윈도우에 로드하지 않고, 구조화된 관찰 결과를 오케스트레이터에 반환합니다.
 
 - 이미지, 스크린샷, 다이어그램 -> `read` 도구 (네이티브 이미지 지원)
 - PDF 및 바이너리 문서 -> `read` 도구 (텍스트 + 구조 추출)
-- **기본 비활성화** — `"disabled_agents": []`로 설정하고 비전 지원 모델을 구성하여 활성화; `--preset=opencode-go`로 설치하면 `opencode-go/kimi-k2.6`으로 자동 활성화됩니다
+- **기본 비활성화** - `"disabled_agents": []`로 설정하고 비전 지원 모델을 구성하여 활성화; `--preset=opencode-go`로 설치하면 `opencode-go/kimi-k2.6`으로 자동 활성화됩니다
 
     </td>
   </tr>
@@ -583,7 +609,7 @@ Worktrees는 Git worktree를 `.slim/worktrees/<slug>/` 아래의 안전하고 �
   </tr>
   <tr>
     <td colspan="2">
-      <b>기본 모델:</b> <code>openai/gpt-5.4-mini</code> — <i>비전 지원 모델을 구성하여 활성화</i>
+      <b>기본 모델:</b> <code>openai/gpt-5.4-mini</code> - <i>비전 지원 모델을 구성하여 활성화</i>
     </td>
   </tr>
   <tr>

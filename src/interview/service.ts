@@ -43,6 +43,14 @@ import type {
 const COMMAND_NAME = 'interview';
 const DEFAULT_MAX_QUESTIONS = 2;
 
+/**
+ * Cap on retained abandoned interview records. Abandoned interviews are kept
+ * briefly so a still-open browser tab can render their final state, but
+ * without a bound the `interviewsById` and `browserOpened` collections grow
+ * for the life of a long-running session/dashboard process.
+ */
+export const MAX_RETAINED_ABANDONED = 50;
+
 function isTruthyEnvFlag(value: string | undefined): boolean {
   if (!value) {
     return false;
@@ -171,6 +179,7 @@ export function createInterviewService(
     | null = null;
   let onInterviewCreated: ((interview: InterviewRecord) => void) | null = null;
   let idCounter = 0;
+  let abandonedOrderCounter = 0;
 
   function setBaseUrlResolver(resolver: () => Promise<string>): void {
     resolveBaseUrl = resolver;
@@ -287,6 +296,40 @@ export function createInterviewService(
     return interviewsById.get(interviewId) ?? null;
   }
 
+  /**
+   * Mark an interview abandoned and prune the oldest abandoned records so the
+   * in-memory registry (and its browser-open tracking) stays bounded.
+   */
+  function abandonInterview(interview: InterviewRecord): void {
+    if (interview.status !== 'abandoned') {
+      interview.abandonedAt = nowIso();
+      interview.abandonedOrder = ++abandonedOrderCounter;
+    }
+    interview.status = 'abandoned';
+    pruneAbandonedInterviews();
+  }
+
+  function pruneAbandonedInterviews(): void {
+    const abandoned = [...interviewsById.values()].filter(
+      (record) => record.status === 'abandoned',
+    );
+    const overflow = abandoned.length - MAX_RETAINED_ABANDONED;
+    if (overflow <= 0) return;
+    abandoned
+      .sort((a, b) => {
+        const timeDelta =
+          new Date(a.abandonedAt ?? a.createdAt).getTime() -
+          new Date(b.abandonedAt ?? b.createdAt).getTime();
+        if (timeDelta !== 0) return timeDelta;
+        return (a.abandonedOrder ?? 0) - (b.abandonedOrder ?? 0);
+      })
+      .slice(0, overflow)
+      .forEach((record) => {
+        interviewsById.delete(record.id);
+        browserOpened.delete(record.id);
+      });
+  }
+
   async function createInterview(
     sessionID: string,
     idea: string,
@@ -300,7 +343,7 @@ export function createInterviewService(
           return active;
         }
 
-        active.status = 'abandoned';
+        abandonInterview(active);
       }
     }
 
@@ -338,7 +381,7 @@ export function createInterviewService(
           return active;
         }
 
-        active.status = 'abandoned';
+        abandonInterview(active);
       }
     }
 
@@ -396,7 +439,7 @@ export function createInterviewService(
     // Rename file if assistant provided a title (and file hasn't been renamed yet)
     await maybeRenameWithTitle(interview, state.title);
 
-    // Skip rewrite when parsed.state is null — agent already wrote the final spec
+    // Skip rewrite when parsed.state is null - agent already wrote the final spec
     let document: string;
     if (parsed.state) {
       document = await rewriteInterviewDocument(interview, state.summary);
@@ -568,7 +611,7 @@ export function createInterviewService(
       await appendInterviewAnswers(interview, state.questions, answers);
       const prompt = buildAnswerPrompt(answers, state.questions, maxQuestions);
 
-      // Use promptAsync for non-blocking — returns immediately, LLM
+      // Use promptAsync for non-blocking - returns immediately, LLM
       // processes in background. State push updates dashboard when done.
       const model = sessionModel.get(interview.sessionID);
       await ctx.client.session.promptAsync({
@@ -695,7 +738,7 @@ export function createInterviewService(
         return;
       }
 
-      interview.status = 'abandoned';
+      abandonInterview(interview);
       fileCache = null;
       activeInterviewIds.delete(deletedSessionId);
       log('[interview] session deleted, interview marked abandoned', {
@@ -863,7 +906,7 @@ export function createInterviewService(
         `The user sent a freeform message via the dashboard chat panel:`,
         `${message}`,
         ``,
-        `Process this request — it may be a request to add a new section, revise existing content, ask clarifying questions, or make structural changes.`,
+        `Process this request - it may be a request to add a new section, revise existing content, ask clarifying questions, or make structural changes.`,
         `Update the specification document accordingly and include the updated 11-section specification.`,
         `Ask up to ${maxQuestions} clarifying questions if needed using the same <interview_state> JSON block format as before.`,
       ].join('\n');
@@ -937,7 +980,7 @@ export function createInterviewService(
           `The user confirmed the interview spec is complete.`,
           ``,
           `Produce a final, polished version of the full spec document.`,
-          `Do NOT include any <interview_state> block — just output the final spec as clean markdown.`,
+          `Do NOT include any <interview_state> block - just output the final spec as clean markdown.`,
           `The spec should be comprehensive, well-structured, and ready for implementation.`,
         ].join('\n');
       }

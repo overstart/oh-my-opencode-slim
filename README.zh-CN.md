@@ -83,9 +83,34 @@ Install and configure oh-my-opencode-slim: https://raw.githubusercontent.com/alv
 bunx oh-my-opencode-slim@latest install
 ```
 
+### 从 Master 分支运行
+
+如果您想使用最新代码、方便修复问题，或进行本地开发和贡献，可以使用这种方式：
+
+```bash
+git clone https://github.com/alvinunreal/oh-my-opencode-slim.git ~/repos/oh-my-opencode-slim
+cd ~/repos/oh-my-opencode-slim
+bun install
+bun run build
+bun dist/cli/index.js install
+```
+
+安装程序会把本地仓库路径加入 `~/.config/opencode/opencode.json` 的
+`plugin` 数组，因此 OpenCode 会从该文件夹加载插件。之后要更新：
+
+```bash
+cd ~/repos/oh-my-opencode-slim
+git pull
+bun install
+bun run build
+```
+
 ### 入门指南
 
 安装程序会同时生成 OpenAI 和 OpenCode Go 预设，默认启用 OpenAI。
+
+> [!TIP]
+> 根据自己的工作流自由微调模型和智能体。默认预设只是起点；本插件的目标是为用户提供深度灵活性和可定制性。
 
 要在安装期间启用 OpenCode Go，请运行 `bunx oh-my-opencode-slim@latest install --preset=opencode-go`，或在安装后修改 `~/.config/opencode/oh-my-opencode-slim.json` 中的默认预设名称。
 
@@ -127,12 +152,11 @@ bunx oh-my-opencode-slim@latest install
       "fixer": { "model": "openai/gpt-5.5", "variant": "low", "skills": [], "mcps": [] }
     },
     "opencode-go": {
-      "orchestrator": { "model": "opencode-go/glm-5.1", "skills": [ "*" ], "mcps": [ "*", "!context7" ] },
-      "oracle": { "model": "opencode-go/deepseek-v4-pro", "variant": "max", "skills": ["simplify"], "mcps": [] },
-      "council": { "model": "opencode-go/deepseek-v4-pro", "variant": "high", "skills": [], "mcps": [] },
-      "librarian": { "model": "opencode-go/minimax-m2.7", "skills": [], "mcps": [ "websearch", "context7", "gh_grep" ] },
-      "explorer": { "model": "opencode-go/minimax-m2.7", "skills": [], "mcps": [] },
-      "designer": { "model": "opencode-go/kimi-k2.6", "variant": "medium", "skills": [], "mcps": [] },
+      "orchestrator": { "model": "opencode-go/glm-5.2", "skills": [ "*" ], "mcps": [ "*", "!context7" ] },
+      "oracle": { "model": "opencode-go/qwen3.7-max", "variant": "max", "skills": ["simplify"], "mcps": [] },
+      "librarian": { "model": "opencode-go/deepseek-v4-flash", "skills": [], "mcps": [ "websearch", "context7", "gh_grep" ] },
+      "explorer": { "model": "opencode-go/deepseek-v4-flash", "skills": [], "mcps": [] },
+      "designer": { "model": "opencode-go/kimi-k2.7-code", "variant": "medium", "skills": [], "mcps": [] },
       "fixer": { "model": "opencode-go/deepseek-v4-flash", "variant": "high", "skills": [], "mcps": [] }
     }
   }
@@ -170,12 +194,12 @@ ping all agents
 
 V2 将 oh-my-opencode-slim 变成了以调度器为核心的多智能体工作流系统。Orchestrator 专注于规划、委派、结果整合与验证，而专家智能体在各自的工作通道中完成任务。
 
-- **[后台智能体](#后台智能体)** — Orchestrator 现在会把专家作为后台任务派发，跟踪任务/会话 ID，等待完成事件，并在继续之前整合结果。
-- **[Companion](#companion)** — 可选的浮动桌面窗口会显示当前活跃的智能体，包括并行运行的后台专家。
-- **[Deepwork](#deepwork)** — 面向大型、多文件、高风险或分阶段编码工作的结构化工作流，使用持久化计划文件和 Oracle 评审关卡。
-- **[Reflect](#reflect)** — 回顾重复出现的工作模式，并建议可复用的 skill、智能体、命令、配置规则、提示词规则或项目 playbook。
-- **[Worktrees](#worktrees)** — 将 Git worktree 作为隔离编码通道管理，并为复杂、高风险或并行任务提供安全协议。
-- **[oh-my-opencode-slim Skill](#oh-my-opencode-slim-skill)** — 随包提供的配置技能，可安全调优模型、提示词、自定义智能体、MCP 访问、预设和插件行为。
+- **[后台智能体](#后台智能体)** - Orchestrator 现在会把专家作为后台任务派发，跟踪任务/会话 ID，等待完成事件，并在继续之前整合结果。
+- **[Companion](#companion)** - 可选的浮动桌面窗口会显示当前活跃的智能体，包括并行运行的后台专家。
+- **[Deepwork](#deepwork)** - 面向大型、多文件、高风险或分阶段编码工作的结构化工作流，使用持久化计划文件和 Oracle 评审关卡。
+- **[Reflect](#reflect)** - 回顾重复出现的工作模式，并建议可复用的 skill、智能体、命令、配置规则、提示词规则或项目 playbook。
+- **[Worktrees](#worktrees)** - 将 Git worktree 作为隔离编码通道管理，并为复杂、高风险或并行任务提供安全协议。
+- **[oh-my-opencode-slim Skill](#oh-my-opencode-slim-skill)** - 随包提供的配置技能，可安全调优模型、提示词、自定义智能体、MCP 访问、预设和插件行为。
 
 #### 后台智能体
 
@@ -264,7 +288,7 @@ Worktrees 将 Git worktree 作为安全、隔离的编码通道管理，默认�
       <br><sub><i>在复杂性的深渊中锻造而成。</i></sub>
     </td>
     <td width="70%" valign="top">
-      当第一个代码库在自身的复杂性下崩溃时，Orchestrator 诞生了。神明与凡人都无法承担责任——因此 Orchestrator 从虚无中显现，从混沌中建立秩序。它确定实现任何目标的最优路径，平衡速度、质量和成本。它引导整个团队，为每项任务召唤合适的专家，并通过委派任务以获得最佳成果。
+      当第一个代码库在自身的复杂性下崩溃时，Orchestrator 诞生了。神明与凡人都无法承担责任--因此 Orchestrator 从虚无中显现，从混沌中建立秩序。它确定实现任何目标的最优路径，平衡速度、质量和成本。它引导整个团队，为每项任务召唤合适的专家，并通过委派任务以获得最佳成果。
     </td>
   </tr>
   <tr>
@@ -346,7 +370,7 @@ Worktrees 将 Git worktree 作为安全、隔离的编码通道管理，默认�
       <br><sub><i>十字路口的声音。</i></sub>
     </td>
     <td width="70%" valign="top">
-      Oracle 伫立在每个架构决策的十字路口。它走过每一条路，见过每一个终点，了解前方潜伏的所有陷阱。当您站在重大重构的悬崖边时，它是向您耳语哪条路通往毁灭、哪条路通往荣耀的声音。它不会替您做选择——但它会照亮道路，让您明智地抉择。
+      Oracle 伫立在每个架构决策的十字路口。它走过每一条路，见过每一个终点，了解前方潜伏的所有陷阱。当您站在重大重构的悬崖边时，它是向您耳语哪条路通往毁灭、哪条路通往荣耀的声音。它不会替您做选择--但它会照亮道路，让您明智地抉择。
     </td>
   </tr>
   <tr>
@@ -410,7 +434,7 @@ Worktrees 将 Git worktree 作为安全、隔离的编码通道管理，默认�
   </tr>
   <tr>
     <td colspan="2">
-      <b>默认设置：</b> <code>配置驱动</code> — 议员（councillors）来自 <code>council.presets</code>，而 Council 智能体本身的模型来自您的常规 <code>council</code> 智能体配置。
+      <b>默认设置：</b> <code>配置驱动</code> - 议员（councillors）来自 <code>council.presets</code>，而 Council 智能体本身的模型来自您的常规 <code>council</code> 智能体配置。
     </td>
   </tr>
   <tr>
@@ -436,7 +460,7 @@ Worktrees 将 Git worktree 作为安全、隔离的编码通道管理，默认�
       <br><sub><i>理解的编织者。</i></sub>
     </td>
     <td width="70%" valign="top">
-      当人类意识到没有任何单一思想能容纳所有知识时，Librarian 诞生了。它是一位编织者，将零散的信息线索连接成一幅理解的织锦。它穿梭于无限的人类知识图书馆中，从各个角落收集洞察，并将它们绑定为超越单纯事实的答案。它所返回的不是碎片信息——而是深层的理解。
+      当人类意识到没有任何单一思想能容纳所有知识时，Librarian 诞生了。它是一位编织者，将零散的信息线索连接成一幅理解的织锦。它穿梭于无限的人类知识图书馆中，从各个角落收集洞察，并将它们绑定为超越单纯事实的答案。它所返回的不是碎片信息--而是深层的理解。
     </td>
   </tr>
   <tr>
@@ -477,7 +501,7 @@ Worktrees 将 Git worktree 作为安全、隔离的编码通道管理，默认�
       <br><sub><i>美是不可或缺的。</i></sub>
     </td>
     <td width="70%" valign="top">
-      在这个经常遗忘美学价值的世界里，Designer 是美的不朽守护者。它见证了数以百万计的界面兴衰更替，它记得哪些被铭记，哪些被遗忘。它背负着神圣的使命，确保每一个像素都有其用途，每一个动画都在讲述故事，每一次交互都令人愉悦。美不是可选的——而是不可或缺的。
+      在这个经常遗忘美学价值的世界里，Designer 是美的不朽守护者。它见证了数以百万计的界面兴衰更替，它记得哪些被铭记，哪些被遗忘。它背负着神圣的使命，确保每一个像素都有其用途，每一个动画都在讲述故事，每一次交互都令人愉悦。美不是可选的--而是不可或缺的。
     </td>
   </tr>
   <tr>
@@ -518,7 +542,7 @@ Worktrees 将 Git worktree 作为安全、隔离的编码通道管理，默认�
       <br><sub><i>愿景与现实之间的最后一步。</i></sub>
     </td>
     <td width="70%" valign="top">
-      Fixer 是曾经构建数字世界基石的建造者血脉的最后传人。当规划和辩论的时代开启时，它们依然坚守——它们是真正动手建造的人。它们掌握着如何将想法转化为实物、如何将规范转化为具体实现的古老知识。它们是愿景与现实之间的最后一步。
+      Fixer 是曾经构建数字世界基石的建造者血脉的最后传人。当规划和辩论的时代开启时，它们依然坚守--它们是真正动手建造的人。它们掌握着如何将想法转化为实物、如何将规范转化为具体实现的古老知识。它们是愿景与现实之间的最后一步。
     </td>
   </tr>
   <tr>
@@ -565,11 +589,11 @@ Worktrees 将 Git worktree 作为安全、隔离的编码通道管理，默认�
     </td>
     <td width="70%" valign="top">
 
-**只读视觉分析** —— 解读图像、屏幕截图、PDF 和图表。将结构化的观察结果返回给 Orchestrator，而无需将原始文件字节加载到主上下文窗口中。
+**只读视觉分析** -- 解读图像、屏幕截图、PDF 和图表。将结构化的观察结果返回给 Orchestrator，而无需将原始文件字节加载到主上下文窗口中。
 
 - 图像、屏幕截图、图表 → `read` 工具（原生图像支持）
 - PDF 和二进制文档 → `read` 工具（文本 + 结构提取）
-- **默认禁用** —— 通过设置 `"disabled_agents": []` 和配置具有视觉能力的模型来启用；若使用 `--preset=opencode-go` 预设安装，将自动使用 `opencode-go/kimi-k2.6` 启用它。
+- **默认禁用** -- 通过设置 `"disabled_agents": []` 和配置具有视觉能力的模型来启用；若使用 `--preset=opencode-go` 预设安装，将自动使用 `opencode-go/kimi-k2.6` 启用它。
 
     </td>
   </tr>
@@ -580,7 +604,7 @@ Worktrees 将 Git worktree 作为安全、隔离的编码通道管理，默认�
   </tr>
   <tr>
     <td colspan="2">
-      <b>默认模型：</b> <code>openai/gpt-5.4-mini</code> — <i>需配置具有视觉能力的模型以启用</i>
+      <b>默认模型：</b> <code>openai/gpt-5.4-mini</code> - <i>需配置具有视觉能力的模型以启用</i>
     </td>
   </tr>
   <tr>

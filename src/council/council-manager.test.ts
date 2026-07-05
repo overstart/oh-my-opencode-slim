@@ -720,7 +720,7 @@ describe('CouncilManager', () => {
       );
 
       expect(result.success).toBe(true);
-      // Verify no prompt contamination — councillor gets raw prompt
+      // Verify no prompt contamination - councillor gets raw prompt
       const promptCalls = ctx.client.session.prompt.mock.calls as Array<
         [
           {
@@ -841,11 +841,62 @@ describe('CouncilManager', () => {
       );
 
       expect(result.success).toBe(false);
-      // No retry on timeout — messages should not be called
+      // No retry on timeout - messages should not be called
       expect(messagesCallCount).toBe(0);
       expect(result.councillorResults).toHaveLength(1);
       expect(result.councillorResults[0].status).toBe('timed_out');
       expect(result.councillorResults[0].error).toContain('timed out');
+    });
+
+    test('falls back to next model in councillor chain on failure', async () => {
+      let sessionCount = 0;
+      const ctx = createMockContext({
+        sessionCreateResult: () => {
+          sessionCount++;
+          return { data: { id: `session-${sessionCount}` } };
+        },
+        promptImpl: async (args: any) => {
+          // First model (session-1) fails; second model (session-2) succeeds.
+          if (args.path?.id === 'session-1') {
+            throw new Error('Prompt timed out after 180000ms');
+          }
+          return {};
+        },
+        sessionMessagesResult: {
+          data: [
+            {
+              info: { role: 'assistant' },
+              parts: [{ type: 'text', text: 'Fallback success' }],
+            },
+          ],
+        },
+      });
+
+      const config: PluginConfig = {
+        council: {
+          presets: {
+            default: {
+              alpha: {
+                model: ['openai/gpt-5.4-mini', 'openai/gpt-5.3-codex'],
+              },
+            },
+          },
+        },
+      } as any;
+      const manager = new CouncilManager(ctx, config, undefined);
+
+      const result = await manager.runCouncil(
+        'test prompt',
+        undefined,
+        'parent-id',
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.councillorResults).toHaveLength(1);
+      expect(result.councillorResults[0].status).toBe('completed');
+      expect(result.councillorResults[0].result).toBe('Fallback success');
+      // Reported model reflects the fallback that actually responded.
+      expect(result.councillorResults[0].model).toBe('openai/gpt-5.3-codex');
     });
 
     test('exhausts councillor retries and returns failure', async () => {
