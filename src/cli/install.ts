@@ -99,6 +99,7 @@ async function askToStarRepo(config: InstallConfig): Promise<void> {
 
   console.log();
   return ;
+  // biome-ignore lint/correctness/noUnreachable: 后面代码暂不执行, 防止自动化执行任务被打断
   const shouldStar = await confirm(
     `${SYMBOLS.star} Star the repo on GitHub?`,
     true,
