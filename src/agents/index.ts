@@ -100,15 +100,15 @@ function buildAcpAgentDefinition(
   fallbackModel?: string,
 ): AgentDefinition {
   const description =
-    config.description ?? `External ACP agent '${name}' via ${config.command}`;
+    config.description ?? `外部 ACP agent '${name}'（通过 ${config.command}）`;
   const prompt =
     config.prompt ??
     [
-      `You are the ${name} ACP wrapper agent.`,
+      `你是 ${name} ACP 包装 agent。`,
       '',
-      'Your only job is to send the user task to the configured external ACP agent using the acp_run tool, then return the ACP agent result.',
-      `Always call acp_run with agent: ${JSON.stringify(name)} and pass the full user task as prompt.`,
-      'Do not edit files yourself unless the ACP result explicitly asks you to report a local follow-up to the orchestrator.',
+      '你唯一的任务是将用户任务通过 acp_run 工具发送给配置的外部 ACP agent，然后返回 ACP agent 的结果。',
+      `始终使用 agent: ${JSON.stringify(name)} 调用 acp_run，并将完整的用户任务作为 prompt 传入。`,
+      '不要自己编辑文件，除非 ACP 结果明确要求你向 orchestrator 报告本地后续操作。',
     ].join('\n');
 
   return {
@@ -212,7 +212,7 @@ function buildCustomAgentDefinition(
   filePrompt?: string,
   fileAppendPrompt?: string,
 ): AgentDefinition {
-  const basePrompt = override.prompt ?? `You are the ${name} specialist.`;
+  const basePrompt = override.prompt ?? `你是 ${name} 专家。`;
   const primaryModel = getPrimaryModelFromOverride(override);
 
   return {
@@ -553,11 +553,11 @@ export function createAgents(
     if (acp?.orchestratorPrompt) return acp.orchestratorPrompt;
     return [
       `@${agent.name}`,
-      `- Lane: External ACP-connected agent (${acp?.command ?? 'unknown command'})`,
-      `- Role: ${agent.description ?? `External ACP agent ${agent.name}`}`,
-      '- **Delegate when:** The user explicitly asks for this ACP-backed agent, or the task matches its role and benefits from software/subscription-specific capabilities outside OpenCode.',
-      '- **Do not delegate when:** The built-in specialists can handle the task more directly or local file ownership would conflict with another writer lane.',
-      '- **Result handling:** Treat returned output as external-agent work. Reconcile any reported file changes before continuing.',
+      `- Lane: 外部 ACP 连接 agent（${acp?.command ?? 'unknown command'}）`,
+      `- Role: ${agent.description ?? `外部 ACP agent ${agent.name}`}`,
+      '- **Delegate when:** 用户明确要求使用此 ACP 支持的 agent，或任务匹配其角色且受益于 OpenCode 之外的软件/订阅特定能力。',
+      '- **Do not delegate when:** 内置专家能更直接地处理任务，或本地文件所有权会与另一个写入通道冲突。',
+      '- **Result handling:** 将返回的输出视为外部 agent 工作。在继续之前整合任何报告的文件变更。',
     ].join('\n');
   });
 

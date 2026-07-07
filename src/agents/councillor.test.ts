@@ -9,7 +9,7 @@ describe('createCouncillorAgent', () => {
 
   test('creates agent with correct description', () => {
     const agent = createCouncillorAgent('test-model');
-    expect(agent.description).toContain('Read-only council advisor');
+    expect(agent.description).toContain('只读 council 顾问');
   });
 
   test('sets model from argument', () => {

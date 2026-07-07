@@ -39,10 +39,10 @@ describe('formatCouncillorResults', () => {
     );
     expect(formatted).toContain('**Councillor Responses**:');
     expect(formatted).toContain(
-      'You MUST follow the Synthesis Process steps before producing output',
+      '你必须按照综合流程步骤生成输出',
     );
     expect(formatted).toContain(
-      'consensus confidence rating (unanimous, majority, or split)',
+      '共识置信度评级（unanimous、majority 或 split）',
     );
     expect(formatted).not.toContain('**Failed/Timed-out Councillors**:');
   });
@@ -146,7 +146,7 @@ describe('formatCouncillorResults', () => {
     expect(formatted).toContain('Valid response');
     expect(formatted).toContain('**beta** (gpt-5.5):');
     expect(formatted).toContain('Another valid response');
-    expect(formatted).toContain('review each councillor response individually');
+    expect(formatted).toContain('逐一审查每个 councillor 的回应');
   });
 });
 
