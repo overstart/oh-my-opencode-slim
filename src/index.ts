@@ -300,6 +300,7 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
       config.fallback?.enabled !== false,
       config.fallback?.maxRetries ?? 3,
       sessionLifecycle,
+      config.fallback?.runtimeOverride ?? true,
     );
 
     deepworkCommandHook = createDeepworkCommandHook();
