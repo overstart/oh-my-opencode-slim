@@ -85,8 +85,8 @@ All config files support **JSONC** (JSON with Comments):
   /* Agent model mappings */
   "presets": {
     "openai": {
-      "oracle": { "model": "openai/gpt-5.5" },
-      "explorer": { "model": "openai/gpt-5.4-mini" },
+      "oracle": { "model": "openai/gpt-5.6-sol" },
+      "explorer": { "model": "openai/gpt-5.6-luna" },
     },
   },
 
@@ -141,7 +141,7 @@ Presets can also be switched at runtime without restarting using the `/preset` c
 | `tmux.enabled` | boolean | `false` | Legacy alias for `multiplexer.type = "tmux"` |
 | `tmux.layout` | string | `"main-vertical"` | Legacy alias for `multiplexer.layout` |
 | `tmux.main_pane_size` | number | `60` | Legacy alias for `multiplexer.main_pane_size` |
-| `backgroundJobs.maxSessionsPerAgent` | integer | `2` | Maximum completed/reconciled reusable child sessions per specialist type in the current orchestrator session (1–10). See [Session Management](session-management.md) |
+| `backgroundJobs.maxSessionsPerAgent` | integer | `2` | Maximum completed/reconciled reusable child sessions per specialist type in the current orchestrator session (1–10) |
 | `backgroundJobs.readContextMinLines` | integer | `10` | Minimum number of lines read from a file before it appears in reusable background-job context (0–1000) |
 | `backgroundJobs.readContextMaxFiles` | integer | `8` | Maximum number of recent read-context files shown per reusable child session (0–50) |
 | `disabled_mcps` | string[] | `[]` | MCP server IDs to disable globally |
@@ -199,7 +199,7 @@ and troubleshooting.
       "command": "claude-code-acp",
       "args": [],
       "description": "Claude Code subscription agent for deep research",
-      "wrapperModel": "openai/gpt-5.4-mini",
+      "wrapperModel": "openai/gpt-5.6-luna",
       "permissionMode": "ask",
       "timeoutMs": 300000
     },
@@ -255,7 +255,7 @@ major is available, the plugin shows a migration command instead.
 Background job management is enabled by default and does not need to be present
 in the starter config. Add `backgroundJobs` only if you want to tune how many
 completed/reconciled child-agent sessions are reusable or how much read context is shown. See
-[Session Management](session-management.md) for the concept, defaults, and
+the [Background Orchestration](background-orchestration.md) guide for the concept, defaults, and
 examples.
 
 ### Agent Display Names
@@ -296,7 +296,7 @@ teaches the orchestrator exactly when to delegate to it.
 {
   "agents": {
     "janitor": {
-      "model": "github-copilot/gpt-5.5",
+      "model": "github-copilot/gpt-5.6",
       "prompt": "You are Janitor. Audit codebase entropy, dead code, docs drift, naming inconsistencies, and unnecessary complexity. Prefer analysis and plans over direct edits.",
       "orchestratorPrompt": "@janitor\n- Role: Maintenance specialist for codebase cleanup and entropy reduction\n- **Delegate when:** after large refactors • cleanup/technical-debt review • dead code or docs drift is suspected\n- **Don't delegate when:** feature implementation • urgent debugging • UI/UX work"
     }

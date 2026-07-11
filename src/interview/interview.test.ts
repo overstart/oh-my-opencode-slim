@@ -3,6 +3,7 @@ import * as fs from 'node:fs/promises';
 import { createServer } from 'node:http';
 import * as path from 'node:path';
 import { InterviewConfigSchema } from '../config/schema';
+import { INTERNAL_INITIATOR_METADATA_KEY } from '../utils';
 import { createInterviewServer } from './server';
 import {
   createInterviewService as createRealInterviewService,
@@ -39,6 +40,7 @@ function createMockContext(overrides?: {
           }
           return {};
         }),
+        update: mock(async () => ({})),
       },
     },
     directory: overrides?.directory ?? '/test/directory',
@@ -130,7 +132,14 @@ describe('interview service', () => {
       const service = createInterviewService(ctx);
       // Set up base URL resolver to avoid server error
       service.setBaseUrlResolver(async () => 'http://localhost:9999');
-      const output = { parts: [] as Array<{ type: string; text?: string }> };
+      const output = {
+        parts: [] as Array<{
+          type: string;
+          text?: string;
+          synthetic?: boolean;
+          metadata?: Record<string, unknown>;
+        }>,
+      };
 
       await service.handleCommandExecuteBefore(
         {
@@ -146,6 +155,10 @@ describe('interview service', () => {
       expect(output.parts[0].type).toBe('text');
       expect(output.parts[0].text).toContain('My App Idea');
       expect(output.parts[0].text).toContain('<interview_state>');
+      expect(output.parts[0]).toMatchObject({
+        synthetic: true,
+        metadata: { [INTERNAL_INITIATOR_METADATA_KEY]: true },
+      });
 
       // Should send UI notification prompt to session
       expect(ctx.client.session.prompt).toHaveBeenCalled();
@@ -158,6 +171,55 @@ describe('interview service', () => {
       );
 
       // Cleanup
+      await fs.rm(tempDir, { recursive: true, force: true });
+    });
+
+    test('renames session with interview title on creation', async () => {
+      const tempDir = await fs.mkdtemp('/tmp/interview-test-');
+      const ctx = createMockContext({ directory: tempDir });
+      const service = createInterviewService(ctx);
+      service.setBaseUrlResolver(async () => 'http://localhost:9999');
+      const output = { parts: [] as Array<{ type: string; text?: string }> };
+
+      await service.handleCommandExecuteBefore(
+        {
+          command: 'interview',
+          sessionID: 'session-rename',
+          arguments: 'build a task manager',
+        },
+        output,
+      );
+
+      expect(ctx.client.session.update).toHaveBeenCalledTimes(1);
+      expect(ctx.client.session.update.mock.calls[0][0]).toEqual({
+        path: { id: 'session-rename' },
+        body: { title: 'Interview: build a task manager' },
+      });
+
+      await fs.rm(tempDir, { recursive: true, force: true });
+    });
+
+    test('truncates session title to 50 chars with ellipsis', async () => {
+      const tempDir = await fs.mkdtemp('/tmp/interview-test-');
+      const ctx = createMockContext({ directory: tempDir });
+      const service = createInterviewService(ctx);
+      service.setBaseUrlResolver(async () => 'http://localhost:9999');
+      const output = { parts: [] as Array<{ type: string; text?: string }> };
+
+      const longIdea = 'a'.repeat(60);
+      await service.handleCommandExecuteBefore(
+        {
+          command: 'interview',
+          sessionID: 'session-truncate',
+          arguments: longIdea,
+        },
+        output,
+      );
+
+      const title = ctx.client.session.update.mock.calls[0][0].body.title;
+      expect(title.length).toBe(50);
+      expect(title.endsWith('…')).toBe(true);
+
       await fs.rm(tempDir, { recursive: true, force: true });
     });
 
@@ -832,7 +894,7 @@ describe('interview service', () => {
             info: {
               sessionID,
               providerID: 'openai',
-              modelID: 'gpt-5.4-mini',
+              modelID: 'gpt-5.6-luna',
             },
           },
         },
@@ -844,7 +906,7 @@ describe('interview service', () => {
       const call = ctx.client.session.promptAsync.mock.calls[0]?.[0];
       expect(call.body.model).toEqual({
         providerID: 'openai',
-        modelID: 'gpt-5.4-mini',
+        modelID: 'gpt-5.6-luna',
       });
 
       await fs.rm(tempDir, { recursive: true, force: true });

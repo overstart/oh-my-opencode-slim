@@ -32,19 +32,13 @@ oh-my-opencode-slim 是一个用于 OpenCode 的智能体编排插件。它内�
 
 要了解智能体本身，请参阅 **[认识众神殿](#meet-the-pantheon)**。如需了解完整特性集，请参阅下方的 **[特性与工作流](#features-and-workflows)**。
 
-### 用 LazySkills 管理智能体技能
+### OpenAI GPT-5.6
 
 <p align="center">
-  <a href="https://github.com/alvinunreal/lazyskills">
-    <img src="img/lazyskills-wide.svg" alt="LazySkills" width="720">
-  </a>
+  <img src="img/openai-gpt-5-6-pantheon.jpeg" alt="OpenAI GPT-5.6 众神殿：Terra、Sol 和 Luna" width="720">
 </p>
 
-**[LazySkills](https://github.com/alvinunreal/lazyskills)** 是一个用于管理智能体技能的终端 UI。它让你可以在一个地方查看已安装的技能、哪些智能体可以使用每个技能、为什么可见性可能失效，以及接下来可以安全执行哪些操作。
-
-<p align="center">
-  <a href="https://github.com/alvinunreal/lazyskills"><b>探索 LazySkills →</b></a>
-</p>
+默认的 [OpenAI 预设](docs/openai-preset.md) 将 Terra 映射为 Orchestrator、Sol 映射为 Oracle、Luna 映射为快速专家通道。
 
 ### 用户怎么说
 
@@ -144,12 +138,12 @@ bun run build
   "preset": "openai",
   "presets": {
     "openai": {
-      "orchestrator": { "model": "openai/gpt-5.5", "variant": "medium", "skills": ["*"], "mcps": ["*", "!context7"] },
-      "oracle": { "model": "openai/gpt-5.5", "variant": "high", "skills": ["simplify"], "mcps": [] },
-      "librarian": { "model": "openai/gpt-5.4-mini", "variant": "low", "skills": [], "mcps": ["websearch", "context7", "gh_grep"] },
-      "explorer": { "model": "openai/gpt-5.4-mini", "variant": "low", "skills": [], "mcps": [] },
-      "designer": { "model": "openai/gpt-5.4-mini", "variant": "medium", "skills": [], "mcps": [] },
-      "fixer": { "model": "openai/gpt-5.5", "variant": "low", "skills": [], "mcps": [] }
+      "orchestrator": { "model": "openai/gpt-5.6-terra", "variant": "medium", "skills": ["*"], "mcps": ["*", "!context7"] },
+      "oracle": { "model": "openai/gpt-5.6-sol", "variant": "high", "skills": ["simplify"], "mcps": [] },
+      "librarian": { "model": "openai/gpt-5.6-luna", "variant": "low", "skills": [], "mcps": ["websearch", "context7", "gh_grep"] },
+      "explorer": { "model": "openai/gpt-5.6-luna", "variant": "low", "skills": [], "mcps": [] },
+      "designer": { "model": "openai/gpt-5.6-luna", "variant": "medium", "skills": [], "mcps": [] },
+      "fixer": { "model": "openai/gpt-5.6-luna", "variant": "medium", "skills": [], "mcps": [] }
     },
     "opencode-go": {
       "orchestrator": { "model": "opencode-go/glm-5.2", "skills": [ "*" ], "mcps": [ "*", "!context7" ] },
@@ -303,12 +297,12 @@ Worktrees 将 Git worktree 作为安全、隔离的编码通道管理，默认�
   </tr>
   <tr>
     <td colspan="2">
-      <b>默认模型：</b> <code>openai/gpt-5.5 (medium)</code>
+      <b>默认模型：</b> <code>openai/gpt-5.6-terra (medium)</code>
     </td>
   </tr>
   <tr>
     <td colspan="2">
-      <b>推荐模型：</b> <code>openai/gpt-5.5 (medium)</code> <code>anthropic/claude-opus-4.6</code>
+      <b>推荐模型：</b> <code>openai/gpt-5.6-terra (medium)</code> <code>anthropic/claude-opus-4.6</code>
     </td>
   </tr>
   <tr>
@@ -344,7 +338,7 @@ Worktrees 将 Git worktree 作为安全、隔离的编码通道管理，默认�
   </tr>
   <tr>
     <td colspan="2">
-      <b>默认模型：</b> <code>openai/gpt-5.4-mini</code>
+      <b>默认模型：</b> <code>openai/gpt-5.6-luna</code>
     </td>
   </tr>
   <tr>
@@ -385,12 +379,12 @@ Worktrees 将 Git worktree 作为安全、隔离的编码通道管理，默认�
   </tr>
   <tr>
     <td colspan="2">
-      <b>默认模型：</b> <code>openai/gpt-5.5 (high)</code>
+      <b>默认模型：</b> <code>openai/gpt-5.6-sol (high)</code>
     </td>
   </tr>
   <tr>
     <td colspan="2">
-      <b>推荐模型：</b> <code>openai/gpt-5.5 (high)</code> <code>google/gemini-3.1-pro-preview (high)</code>
+      <b>推荐模型：</b> <code>openai/gpt-5.6-sol (high)</code> <code>google/gemini-3.1-pro-preview (high)</code>
     </td>
   </tr>
   <tr>
@@ -475,7 +469,7 @@ Worktrees 将 Git worktree 作为安全、隔离的编码通道管理，默认�
   </tr>
   <tr>
     <td colspan="2">
-      <b>默认模型：</b> <code>openai/gpt-5.4-mini</code>
+      <b>默认模型：</b> <code>openai/gpt-5.6-luna</code>
     </td>
   </tr>
   <tr>
@@ -516,7 +510,7 @@ Worktrees 将 Git worktree 作为安全、隔离的编码通道管理，默认�
   </tr>
   <tr>
     <td colspan="2">
-      <b>默认模型：</b> <code>openai/gpt-5.4-mini</code>
+      <b>默认模型：</b> <code>openai/gpt-5.6-luna</code>
     </td>
   </tr>
   <tr>
@@ -557,12 +551,12 @@ Worktrees 将 Git worktree 作为安全、隔离的编码通道管理，默认�
   </tr>
   <tr>
     <td colspan="2">
-      <b>默认模型：</b> <code>openai/gpt-5.5 (low)</code>
+      <b>默认模型：</b> <code>openai/gpt-5.6-luna (medium)</code>
     </td>
   </tr>
   <tr>
     <td colspan="2">
-      <b>推荐模型：</b> <code>openai/gpt-5.5 (low)</code>
+      <b>推荐模型：</b> <code>openai/gpt-5.6-luna (medium)</code>
     </td>
   </tr>
   <tr>
@@ -604,7 +598,7 @@ Worktrees 将 Git worktree 作为安全、隔离的编码通道管理，默认�
   </tr>
   <tr>
     <td colspan="2">
-      <b>默认模型：</b> <code>openai/gpt-5.4-mini</code> - <i>需配置具有视觉能力的模型以启用</i>
+      <b>默认模型：</b> <code>openai/gpt-5.6-luna</code> - <i>需配置具有视觉能力的模型以启用</i>
     </td>
   </tr>
   <tr>

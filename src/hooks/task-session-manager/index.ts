@@ -4,10 +4,10 @@ import {
   type BackgroundJobRecord,
   type BackgroundJobStore,
   deriveTaskSessionLabel,
+  isInternalInitiatorPart,
   parseTaskIdFromTaskOutput,
   parseTaskLaunchOutput,
   parseTaskStatusOutput,
-  SLIM_INTERNAL_INITIATOR_MARKER,
 } from '../../utils';
 import { isRecord as isObjectRecord } from '../../utils/guards';
 import { log } from '../../utils/logger';
@@ -32,11 +32,24 @@ interface TaskArgs {
   task_id?: unknown;
 }
 
-const BACKGROUND_JOB_BOARD_SENTINEL = 'SENTINEL: background-job-board-v2';
+export const BACKGROUND_JOB_BOARD_METADATA_KEY =
+  'oh-my-opencode-slim.backgroundJobBoard';
 const BACKGROUND_COMPLETION_COMPLETED = /^Background task completed: /;
 const BACKGROUND_COMPLETION_FAILED = /^Background task failed: /;
 const MAX_PROCESSED_INJECTED_COMPLETIONS = 500;
 const RAW_SESSION_ID_PATTERN = /^ses_[A-Za-z0-9_-]+$/;
+
+/**
+ * Delay before reconciling idle sessions.
+ * Gives late injected completions time to arrive within this window.
+ * Completions arriving after the window are still dropped (the race is reduced, not eliminated).
+ * ponytail: fixed timeout — event-driven confirmation would fully close the race but adds
+ * significant complexity for a case that rarely exceeds this window in practice.
+ */
+const IDLE_RECONCILE_DELAY_MS = 2_000;
+
+/** Track idle reconciliation timers to cancel on busy/error/deleted. */
+const idleReconcileTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 function djb2Hash(str: string): string {
   let hash = 5381;
@@ -86,6 +99,9 @@ export function createTaskSessionManagerHook(
     readContextMaxFiles?: number;
     backgroundJobBoard?: BackgroundJobStore;
     shouldManageSession: (sessionID: string) => boolean;
+    /** Register a session as orchestrator when the transform hook detects
+     *  an orchestrator message but the session isn't in the agent map yet. */
+    registerSessionAsOrchestrator?: (sessionID: string) => void;
     /** Optional guard: when provided, idle events for a session that is
      *  currently undergoing a foreground-fallback abort/re-prompt cycle
      *  will NOT trigger idle reconciliation. prevents marking a still-
@@ -197,7 +213,12 @@ export function createTaskSessionManagerHook(
     if (part.synthetic !== true) return undefined;
 
     const status = parseTaskStatusOutput(part.text);
-    if (!status) return undefined;
+    if (!status) {
+      log('[task-session-manager] synthetic part missing task status', {
+        textPreview: part.text.slice(0, 120),
+      });
+      return undefined;
+    }
     if (status.state !== 'completed' && status.state !== 'error') {
       return undefined;
     }
@@ -316,8 +337,17 @@ export function createTaskSessionManagerHook(
     ): Promise<void> => {
       const toolName = input.tool.toLowerCase();
       if (toolName !== 'task') return;
-      if (!input.sessionID || !options.shouldManageSession(input.sessionID)) {
-        return;
+      if (!input.sessionID) return;
+      if (!options.shouldManageSession(input.sessionID)) {
+        // ponytail: no agent-identity guard here — at tool.execute.before
+        // time there's no message to inspect. Only orchestrators call `task`
+        // in standard architecture; non-orchestrator false-positives are
+        // accepted because leaf agents don't use this tool.
+        options.registerSessionAsOrchestrator?.(input.sessionID);
+        if (!options.shouldManageSession(input.sessionID)) return;
+        log('[task-session-manager] recovered stale orchestrator mapping', {
+          sessionID: input.sessionID,
+        });
       }
       if (!isObjectRecord(output.args)) return;
 
@@ -348,6 +378,17 @@ export function createTaskSessionManagerHook(
         label,
       };
       pendingCallTracker.add(pendingCall);
+      log(
+        '[task-session-manager] tool.execute.before task — pending call created',
+        {
+          callId: pendingCall.callId,
+          parentSessionId: pendingCall.parentSessionId,
+          agentType: pendingCall.agentType,
+          label: pendingCall.label,
+          inputCallID: input.callID,
+          inputSessionID: input.sessionID,
+        },
+      );
 
       if (typeof args.task_id !== 'string' || args.task_id.trim() === '') {
         return;
@@ -414,6 +455,16 @@ export function createTaskSessionManagerHook(
       if (input.tool.toLowerCase() !== 'task') return;
 
       const pending = pendingCallTracker.take(input.callID, input.sessionID);
+      log('[task-session-manager] tool.execute.after task', {
+        callID: input.callID,
+        sessionID: input.sessionID,
+        hasPending: !!pending,
+        outputType: typeof output.output,
+        outputPreview:
+          typeof output.output === 'string'
+            ? output.output.slice(0, 120)
+            : undefined,
+      });
 
       if (!pending || typeof output.output !== 'string') return;
       const launch = parseTaskLaunchOutput(output.output);
@@ -517,7 +568,12 @@ export function createTaskSessionManagerHook(
           !message.info.sessionID ||
           !options.shouldManageSession(message.info.sessionID)
         ) {
-          continue;
+          const sessionID = message.info.sessionID;
+          if (!sessionID || message.info.agent !== 'orchestrator') {
+            continue;
+          }
+          options.registerSessionAsOrchestrator?.(sessionID);
+          if (!options.shouldManageSession(sessionID)) continue;
         }
 
         for (const [partIndex, part] of message.parts.entries()) {
@@ -545,13 +601,28 @@ export function createTaskSessionManagerHook(
           (part) => part.type === 'text' && typeof part.text === 'string',
         );
         if (!textPart) return;
-        if (textPart.text?.includes(SLIM_INTERNAL_INITIATOR_MARKER)) return;
-        if (textPart.text?.includes(BACKGROUND_JOB_BOARD_SENTINEL)) return;
+        if (isInternalInitiatorPart(textPart)) {
+          return;
+        }
+        if (
+          message.parts.some(
+            (part) =>
+              part.synthetic === true &&
+              isObjectRecord(part.metadata) &&
+              part.metadata[BACKGROUND_JOB_BOARD_METADATA_KEY] === true,
+          )
+        ) {
+          return;
+        }
 
         rememberInjectedTerminalJobs(message.info.sessionID);
-        textPart.text = [textPart.text ?? '', '', reminders.join('\n\n')].join(
-          '\n',
-        );
+        const boardPart = {
+          type: 'text',
+          synthetic: true,
+          text: reminders.join('\n\n'),
+          metadata: { [BACKGROUND_JOB_BOARD_METADATA_KEY]: true },
+        };
+        message.parts.unshift(boardPart);
         return;
       }
     },
@@ -606,8 +677,11 @@ export function createTaskSessionManagerHook(
           runningJobForSession: job?.state === 'running' || false,
         });
         if (sessionId && options.shouldManageSession(sessionId)) {
-          reconcileInjectedTerminalJobs(sessionId);
-          return;
+          const timer = setTimeout(() => {
+            idleReconcileTimers.delete(sessionId);
+            reconcileInjectedTerminalJobs(sessionId);
+          }, IDLE_RECONCILE_DELAY_MS).unref?.();
+          idleReconcileTimers.set(sessionId, timer);
         }
 
         // Fallback: for background child sessions that go idle without
@@ -647,6 +721,13 @@ export function createTaskSessionManagerHook(
       if (input.event.type === 'session.error') {
         const sessionId =
           input.event.properties?.info?.id || input.event.properties?.sessionID;
+        if (sessionId) {
+          const timer = idleReconcileTimers.get(sessionId);
+          if (timer) {
+            clearTimeout(timer);
+            idleReconcileTimers.delete(sessionId);
+          }
+        }
         if (sessionId && options.shouldManageSession(sessionId)) {
           // Only clear injected terminal jobs for fatal errors.
           // Rate-limit errors are recovered by ForegroundFallbackManager
@@ -671,6 +752,13 @@ export function createTaskSessionManagerHook(
       ) {
         const sessionId =
           input.event.properties?.info?.id || input.event.properties?.sessionID;
+        if (sessionId) {
+          const timer = idleReconcileTimers.get(sessionId);
+          if (timer) {
+            clearTimeout(timer);
+            idleReconcileTimers.delete(sessionId);
+          }
+        }
         const before = sessionId
           ? backgroundJobBoard.get(sessionId)
           : undefined;
@@ -706,6 +794,12 @@ export function createTaskSessionManagerHook(
       const sessionId =
         input.event.properties?.info?.id || input.event.properties?.sessionID;
       if (!sessionId) return;
+
+      const timer = idleReconcileTimers.get(sessionId);
+      if (timer) {
+        clearTimeout(timer);
+        idleReconcileTimers.delete(sessionId);
+      }
 
       log('[task-session-manager] session.deleted observed', {
         sessionID: sessionId,

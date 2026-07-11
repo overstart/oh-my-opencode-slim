@@ -10,7 +10,7 @@ const z = tool.schema;
 
 /**
  * Formats the model composition string for the council footer.
- * Shows short model labels per councillor: "α: gpt-5.4-mini, β: gemini-3-pro"
+ * Shows short model labels per councillor: "α: gpt-5.6-luna, β: gemini-3-pro"
  */
 function formatModelComposition(
   councillorResults: Array<{ name: string; model: string }>,
@@ -46,7 +46,7 @@ Returns the councillor responses with a summary footer.`,
         .string()
         .optional()
         .describe(
-          'Council preset to use (default: "default"). Must match a preset in the council config.',
+          'Council preset to use. Omit to use the configured default. Must match a preset in the council config.',
         ),
     },
     async execute(args, toolContext) {

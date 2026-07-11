@@ -53,7 +53,11 @@ export const DEFAULT_MAX_SUBAGENT_DEPTH = 3;
 // Workflow reminders
 export const PHASE_REMINDER_TEXT = `!IMPORTANT! 调度器工作流：规划通道/依赖 → 分发后台专家 → 跟踪任务 ID → 等待 hook 驱动的完成通知 → 整合最终结果 → 验证。不要轮询运行中的作业、消费运行中作业的输出或推进依赖工作。 !END!`;
 
-export const PHASE_REMINDER = `<internal_reminder>${PHASE_REMINDER_TEXT}</internal_reminder>`;
+export function formatSystemReminder(text: string): string {
+  return `<system-reminder>\n${text}\n</system-reminder>`;
+}
+
+export const PHASE_REMINDER = formatSystemReminder(PHASE_REMINDER_TEXT);
 
 export const WRITABLE_FILE_OPERATIONS_RULES = `**File Operations Rules**:
 - 常规代码工作优先使用专用文件工具：glob/grep/ast_grep_search 用于发现，read 用于读取文件内容，edit/write/apply_patch 用于定向源码修改。
@@ -85,3 +89,8 @@ export const STABLE_POLLS_THRESHOLD = 3;
 /** Agents that are disabled by default. Users must explicitly enable them
  *  by removing from disabled_agents and configuring an appropriate model. */
 export const DEFAULT_DISABLED_AGENTS: string[] = ['observer'];
+
+// Background job defaults
+export const DEFAULT_MAX_SESSIONS_PER_AGENT = 2;
+export const DEFAULT_READ_CONTEXT_MIN_LINES = 10;
+export const DEFAULT_READ_CONTEXT_MAX_FILES = 8;

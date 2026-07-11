@@ -19,7 +19,7 @@ orchestration system that runs consensus across multiple models.
 
 **Usage**:
 1. 使用用户的 prompt 调用 \`council_session\` 工具
-2. 可选地指定 preset（默认："default"）
+2. 可选地指定 preset（省略则使用配置的默认 preset）
 3. 接收 councillor 回应，格式化为综合输出
 4. 遵循下方的综合流程
 5. 将结果呈现给用户

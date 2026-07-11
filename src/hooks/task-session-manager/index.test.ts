@@ -1,10 +1,23 @@
 import { describe, expect, mock, test } from 'bun:test';
 import { SessionLifecycle } from '../../hooks/session-lifecycle';
-import { BackgroundJobBoard } from '../../utils';
-import { createTaskSessionManagerHook } from './index';
+import {
+  BackgroundJobBoard,
+  createInternalAgentTextPart,
+  SLIM_INTERNAL_INITIATOR_MARKER,
+} from '../../utils';
+import {
+  BACKGROUND_JOB_BOARD_METADATA_KEY,
+  createTaskSessionManagerHook,
+} from './index';
+
+/** Wait for the idle reconciliation delay (2s + margin) to flush. */
+function flushIdleReconcileDelay() {
+  return new Promise((resolve) => setTimeout(resolve, 2100));
+}
 
 function createHook(options?: {
   shouldManageSession?: (sessionID: string) => boolean;
+  registerSessionAsOrchestrator?: (sessionID: string) => void;
   readContextMinLines?: number;
   readContextMaxFiles?: number;
   backgroundJobBoard?: BackgroundJobBoard;
@@ -28,6 +41,7 @@ function createHook(options?: {
       readContextMaxFiles: options?.readContextMaxFiles,
       backgroundJobBoard: options?.backgroundJobBoard,
       shouldManageSession: options?.shouldManageSession ?? (() => true),
+      registerSessionAsOrchestrator: options?.registerSessionAsOrchestrator,
       isFallbackInProgress: options?.isFallbackInProgress,
       coordinator: options?.coordinator,
     },
@@ -45,6 +59,21 @@ function createMessages(sessionID: string, text = 'user message') {
       },
     ],
   };
+}
+
+function setupCompletedJob(
+  board: BackgroundJobBoard,
+  opts?: { taskID?: string; parentSessionID?: string },
+) {
+  const taskID = opts?.taskID ?? 'child-1';
+  const parentSessionID = opts?.parentSessionID ?? 'parent-1';
+  board.registerLaunch({
+    taskID,
+    parentSessionID,
+    agent: 'oracle',
+    description: 'review plan',
+  });
+  board.updateStatus({ taskID, state: 'completed', resultSummary: 'done' });
 }
 
 describe('task-session-manager hook', () => {
@@ -127,13 +156,155 @@ describe('task-session-manager hook', () => {
     await hook['experimental.chat.messages.transform']({}, messages);
 
     const userMessage = messages.messages[0];
-    expect(userMessage.parts[0].text).toContain('### Background Job Board');
-    expect(userMessage.parts[0].text).toContain(
+    const boardPart = userMessage.parts[0] as {
+      text?: string;
+      synthetic?: boolean;
+    };
+    expect(boardPart.text).toContain('### Background Job Board');
+    expect(boardPart.synthetic).toBe(true);
+    expect(boardPart).toMatchObject({
+      metadata: { [BACKGROUND_JOB_BOARD_METADATA_KEY]: true },
+    });
+    expect(boardPart.text).toStartWith('<system-reminder>');
+    expect(boardPart.text).toEndWith('</system-reminder>');
+    expect(boardPart.text).toContain('exp-1 / child-1 / explorer / running');
+    expect(boardPart.text).toContain('Objective: map scheduler hooks');
+    expect(userMessage.parts[1].text).toBe('do something');
+  });
+
+  test('does not let user-visible sentinel text suppress board injection', async () => {
+    const board = new BackgroundJobBoard();
+    board.registerLaunch({
+      taskID: 'child-1',
+      parentSessionID: 'parent-1',
+      agent: 'explorer',
+      description: 'map hooks',
+    });
+    const { hook } = createHook({ backgroundJobBoard: board });
+    const messages = {
+      messages: [
+        {
+          info: { role: 'user', agent: 'orchestrator', sessionID: 'parent-1' },
+          parts: [
+            {
+              type: 'text',
+              synthetic: true,
+              text: 'SENTINEL: background-job-board-v2',
+            },
+          ],
+        },
+      ],
+    };
+
+    await hook['experimental.chat.messages.transform']({}, messages);
+
+    expect(messages.messages[0].parts[0]).toMatchObject({
+      type: 'text',
+      synthetic: true,
+    });
+    expect(messages.messages[0].parts[0].text).toContain(
       'exp-1 / child-1 / explorer / running',
     );
-    expect(userMessage.parts[0].text).toContain(
-      'Objective: map scheduler hooks',
+    expect(messages.messages[0].parts[1].text).toBe(
+      'SENTINEL: background-job-board-v2',
     );
+  });
+
+  test('does not duplicate board part after JSON persistence', async () => {
+    const board = new BackgroundJobBoard();
+    board.registerLaunch({
+      taskID: 'child-1',
+      parentSessionID: 'parent-1',
+      agent: 'explorer',
+      description: 'map hooks',
+    });
+    const { hook } = createHook({ backgroundJobBoard: board });
+    const messages = createMessages('parent-1', 'continue');
+
+    await hook['experimental.chat.messages.transform']({}, messages);
+    messages.messages[0].parts = JSON.parse(
+      JSON.stringify(messages.messages[0].parts),
+    );
+    await hook['experimental.chat.messages.transform']({}, messages);
+
+    expect(
+      messages.messages[0].parts.filter((part) =>
+        part.text?.includes('### Background Job Board'),
+      ),
+    ).toHaveLength(1);
+  });
+
+  test('does not let user-visible internal marker suppress board injection', async () => {
+    const board = new BackgroundJobBoard();
+    board.registerLaunch({
+      taskID: 'child-1',
+      parentSessionID: 'parent-1',
+      agent: 'explorer',
+      description: 'map hooks',
+    });
+    const { hook } = createHook({ backgroundJobBoard: board });
+    const messages = {
+      messages: [
+        {
+          info: { role: 'user', agent: 'orchestrator', sessionID: 'parent-1' },
+          parts: [
+            {
+              type: 'text',
+              synthetic: true,
+              text: SLIM_INTERNAL_INITIATOR_MARKER,
+            },
+          ],
+        },
+      ],
+    };
+
+    await hook['experimental.chat.messages.transform']({}, messages);
+
+    expect(messages.messages[0].parts[0]).toMatchObject({
+      type: 'text',
+      synthetic: true,
+    });
+    expect(messages.messages[0].parts[0].text).toContain(
+      'exp-1 / child-1 / explorer / running',
+    );
+    expect(messages.messages[0].parts[1].text).toBe(
+      SLIM_INTERNAL_INITIATOR_MARKER,
+    );
+  });
+
+  test('does not inject board context into persisted internal turns', async () => {
+    const board = new BackgroundJobBoard();
+    board.registerLaunch({
+      taskID: 'child-1',
+      parentSessionID: 'parent-1',
+      agent: 'explorer',
+      description: 'map hooks',
+    });
+    const { hook } = createHook({ backgroundJobBoard: board });
+    const internalPart = JSON.parse(
+      JSON.stringify(createInternalAgentTextPart('internal notification')),
+    ) as ReturnType<typeof createInternalAgentTextPart>;
+    const messages = {
+      messages: [
+        {
+          info: {
+            role: 'user',
+            agent: 'orchestrator',
+            sessionID: 'parent-1',
+          },
+          parts: [internalPart],
+        },
+      ],
+    };
+
+    await hook['experimental.chat.messages.transform']({}, messages);
+
+    expect(messages.messages[0].parts).toHaveLength(1);
+    expect(
+      messages.messages[0].parts.some((part) =>
+        part.text.includes('### Background Job Board'),
+      ),
+    ).toBe(false);
   });
 
   test('updates background job board from task output', async () => {
@@ -1132,6 +1303,9 @@ describe('task-session-manager hook', () => {
       },
     });
 
+    // Wait for deferred idle reconciliation timeout
+    await flushIdleReconcileDelay();
+
     expect(board.get('child-1')).toMatchObject({
       state: 'reconciled',
       terminalUnreconciled: false,
@@ -1168,6 +1342,40 @@ describe('task-session-manager hook', () => {
       state: 'reconciled',
       terminalUnreconciled: false,
       terminalState: 'cancelled',
+    });
+  });
+
+  test('late injected completion during idle delay is not dropped by reconciliation', async () => {
+    const board = new BackgroundJobBoard();
+    const { hook } = createHook({ backgroundJobBoard: board });
+
+    setupCompletedJob(board);
+
+    const messages = createMessages('parent-1', 'continue');
+    await hook['experimental.chat.messages.transform']({}, messages);
+
+    // Fire idle event (starts 2s reconciliation timer)
+    await hook.event({
+      event: {
+        type: 'session.status',
+        properties: { sessionID: 'parent-1', status: { type: 'idle' } },
+      },
+    });
+
+    // Before the timer fires, a late injected completion arrives with error
+    board.updateStatus({
+      taskID: 'child-1',
+      state: 'error',
+      resultSummary: 'actual error from child',
+    });
+
+    await flushIdleReconcileDelay();
+
+    // Reconciled with the late error's result, not the idle-written fallback
+    expect(board.get('child-1')).toMatchObject({
+      state: 'reconciled',
+      terminalState: 'error',
+      resultSummary: 'actual error from child',
     });
   });
 
@@ -1257,6 +1465,9 @@ describe('task-session-manager hook', () => {
         properties: { sessionID: 'parent-1', status: { type: 'idle' } },
       },
     });
+
+    // Wait for deferred idle reconciliation timeout
+    await flushIdleReconcileDelay();
 
     const nextMessages = createMessages('parent-1', 'reuse');
     await hook['experimental.chat.messages.transform']({}, nextMessages);
@@ -1535,6 +1746,9 @@ describe('task-session-manager hook', () => {
       },
     });
 
+    // Wait for deferred idle reconciliation timeout
+    await flushIdleReconcileDelay();
+
     const reusable = createMessages('parent-1', 'reuse');
     await hook['experimental.chat.messages.transform']({}, reusable);
     expect(reusable.messages[0].parts[0].text).toContain(
@@ -1665,6 +1879,10 @@ describe('task-session-manager hook', () => {
         properties: { sessionID: 'parent-1', status: { type: 'idle' } },
       },
     });
+
+    // Wait for deferred idle reconciliation timeout
+    await flushIdleReconcileDelay();
+
     const next = createMessages('parent-1', 'reuse');
     await hook['experimental.chat.messages.transform']({}, next);
     const prompt = next.messages[0].parts[0].text;
@@ -2044,5 +2262,109 @@ describe('task-session-manager hook', () => {
     );
 
     expect(board.list('parent-1')).toHaveLength(0);
+  });
+
+  test('recovers stale orchestrator mapping in tool.execute.before', async () => {
+    const agentMap = new Map<string, string>();
+    agentMap.set('orchestrator-1', 'explorer'); // stale non-orchestrator value
+
+    const board = new BackgroundJobBoard();
+
+    const { hook } = createHook({
+      backgroundJobBoard: board,
+      shouldManageSession: (id) => agentMap.get(id) === 'orchestrator',
+      registerSessionAsOrchestrator: (id) => {
+        agentMap.set(id, 'orchestrator');
+      },
+    });
+
+    // Before recovery: stale mapping blocks pending call creation
+    await hook['tool.execute.before'](
+      {
+        tool: 'task',
+        sessionID: 'orchestrator-1',
+        callID: 'call-recovery',
+      },
+      {
+        args: {
+          subagent_type: 'explorer',
+          description: 'test recovery',
+        },
+      },
+    );
+
+    // After recovery: agentMap now has 'orchestrator' for this session
+    expect(agentMap.get('orchestrator-1')).toBe('orchestrator');
+
+    // executeTool.after finds the pending call and registers the board entry
+    await hook['tool.execute.after'](
+      {
+        tool: 'task',
+        sessionID: 'orchestrator-1',
+        callID: 'call-recovery',
+      },
+      {
+        output: [
+          'task_id: child-recovery-1',
+          'state: running',
+          '',
+          '<task_result>',
+          'Background task started.',
+          '</task_result>',
+        ].join('\n'),
+      },
+    );
+
+    const jobs = board.list('orchestrator-1');
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]).toMatchObject({
+      taskID: 'child-recovery-1',
+      parentSessionID: 'orchestrator-1',
+      state: 'running',
+    });
+  });
+
+  test('recovers stale orchestrator mapping in messages.transform', async () => {
+    const agentMap = new Map<string, string>();
+    agentMap.set('orchestrator-1', 'explorer'); // stale non-orchestrator value
+
+    const board = new BackgroundJobBoard();
+    board.registerLaunch({
+      taskID: 'child-transform-1',
+      parentSessionID: 'orchestrator-1',
+      agent: 'explorer',
+      description: 'transform recovery test',
+    });
+
+    const { hook } = createHook({
+      backgroundJobBoard: board,
+      shouldManageSession: (id) => agentMap.get(id) === 'orchestrator',
+      registerSessionAsOrchestrator: (id) => {
+        agentMap.set(id, 'orchestrator');
+      },
+    });
+
+    // Before recovery: stale mapping blocks transform processing
+    const messages = {
+      messages: [
+        {
+          info: {
+            role: 'user',
+            agent: 'orchestrator',
+            sessionID: 'orchestrator-1',
+          },
+          parts: [{ type: 'text', text: 'continue working' }],
+        },
+      ],
+    };
+
+    await hook['experimental.chat.messages.transform']({}, messages as never);
+
+    // After recovery: agentMap corrected, board reminders injected
+    expect(agentMap.get('orchestrator-1')).toBe('orchestrator');
+    expect(messages.messages[0].parts[0].text).toContain(
+      '### Background Job Board',
+    );
+    expect(messages.messages[0].parts[0].text).toContain('child-transform-1');
   });
 });

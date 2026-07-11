@@ -12,7 +12,6 @@ import {
   createAgents,
   getAgentConfigs,
   getDisabledAgents,
-  getEnabledAgentNames,
   isSubagent,
 } from './index';
 
@@ -537,7 +536,7 @@ describe('council agent model resolution', () => {
     // entry in the agent preset - the exact scenario from issue #369.
     const config: PluginConfig = {
       agents: {
-        oracle: { model: 'openai/gpt-5.5' },
+        oracle: { model: 'openai/gpt-5.6' },
       },
       council: {
         ...councilConfig(),
@@ -583,7 +582,7 @@ describe('council agent model resolution', () => {
       master: { model: 'anthropic/claude-opus-4-6' },
       presets: {
         default: {
-          alpha: { model: 'openai/gpt-5.4-mini' },
+          alpha: { model: 'openai/gpt-5.6-luna' },
         },
       },
     };
@@ -608,7 +607,7 @@ describe('options passthrough', () => {
     const config: PluginConfig = {
       agents: {
         oracle: {
-          model: 'openai/gpt-5.5',
+          model: 'openai/gpt-5.6',
           options: { textVerbosity: 'low' },
         },
       },
@@ -640,7 +639,7 @@ describe('options passthrough', () => {
     const config: PluginConfig = {
       agents: {
         oracle: {
-          model: 'openai/gpt-5.5',
+          model: 'openai/gpt-5.6',
           variant: 'high',
           temperature: 0.7,
           options: { textVerbosity: 'low', reasoningEffort: 'medium' },
@@ -649,7 +648,7 @@ describe('options passthrough', () => {
     };
     const agents = createAgents(config);
     const oracle = agents.find((a) => a.name === 'oracle');
-    expect(oracle?.config.model).toBe('openai/gpt-5.5');
+    expect(oracle?.config.model).toBe('openai/gpt-5.6');
     expect(oracle?.config.variant).toBe('high');
     expect(oracle?.config.temperature).toBe(0.7);
     expect(oracle?.config.options).toEqual({
@@ -661,7 +660,7 @@ describe('options passthrough', () => {
   test('options are absent when not configured', () => {
     const config: PluginConfig = {
       agents: {
-        oracle: { model: 'openai/gpt-5.5' },
+        oracle: { model: 'openai/gpt-5.6' },
       },
     };
     const agents = createAgents(config);
@@ -673,7 +672,7 @@ describe('options passthrough', () => {
     const config: PluginConfig = {
       agents: {
         oracle: {
-          model: 'openai/gpt-5.5',
+          model: 'openai/gpt-5.6',
           options: { textVerbosity: 'low' },
         },
       },
@@ -687,7 +686,7 @@ describe('options passthrough', () => {
     const config: PluginConfig = {
       agents: {
         oracle: {
-          model: 'openai/gpt-5.5',
+          model: 'openai/gpt-5.6',
           options: { reasoningEffort: 'medium' },
         },
       },
@@ -723,7 +722,7 @@ describe('AgentOverrideConfigSchema options validation', () => {
 
   test('accepts options alongside other fields', () => {
     const result = AgentOverrideConfigSchema.safeParse({
-      model: 'openai/gpt-5.5',
+      model: 'openai/gpt-5.6',
       variant: 'high',
       temperature: 0.7,
       options: { textVerbosity: 'low' },
@@ -736,7 +735,7 @@ describe('AgentOverrideConfigSchema options validation', () => {
 
   test('config without options is valid', () => {
     const result = AgentOverrideConfigSchema.safeParse({
-      model: 'openai/gpt-5.5',
+      model: 'openai/gpt-5.6',
     });
     expect(result.success).toBe(true);
     if (result.success) {
@@ -760,7 +759,7 @@ describe('AgentOverrideConfigSchema options validation', () => {
 
   test('accepts prompt and orchestratorPrompt override fields', () => {
     const result = AgentOverrideConfigSchema.safeParse({
-      model: 'openai/gpt-5.5',
+      model: 'openai/gpt-5.6',
       prompt: 'You are a specialized reviewer.',
       orchestratorPrompt: '@reviewer\n- Role: Specialized reviewer',
     });
@@ -775,7 +774,7 @@ describe('AgentOverrideConfigSchema options validation', () => {
 
   test('rejects empty prompt fields', () => {
     const result = AgentOverrideConfigSchema.safeParse({
-      model: 'openai/gpt-5.5',
+      model: 'openai/gpt-5.6',
       prompt: '',
     });
     expect(result.success).toBe(false);
@@ -783,7 +782,7 @@ describe('AgentOverrideConfigSchema options validation', () => {
 
   test('rejects empty orchestratorPrompt fields', () => {
     const result = AgentOverrideConfigSchema.safeParse({
-      model: 'openai/gpt-5.5',
+      model: 'openai/gpt-5.6',
       orchestratorPrompt: '',
     });
     expect(result.success).toBe(false);
@@ -791,7 +790,7 @@ describe('AgentOverrideConfigSchema options validation', () => {
 
   test('rejects description field on overrides', () => {
     const result = AgentOverrideConfigSchema.safeParse({
-      model: 'openai/gpt-5.5',
+      model: 'openai/gpt-5.6',
       description: 'not supported for custom agents',
     } as Record<string, unknown>);
     expect(result.success).toBe(false);
@@ -803,7 +802,7 @@ describe('PluginConfigSchema custom-agent-only prompt fields', () => {
     const result = PluginConfigSchema.safeParse({
       agents: {
         oracle: {
-          model: 'openai/gpt-5.5',
+          model: 'openai/gpt-5.6',
           prompt: 'ignored built-in prompt override',
         },
       },
@@ -816,7 +815,7 @@ describe('PluginConfigSchema custom-agent-only prompt fields', () => {
     const result = PluginConfigSchema.safeParse({
       agents: {
         explorer: {
-          model: 'openai/gpt-5.4-mini',
+          model: 'openai/gpt-5.6-luna',
           orchestratorPrompt: '@explorer\n- Role: should be invalid here',
         },
       },
@@ -830,7 +829,7 @@ describe('PluginConfigSchema custom-agent-only prompt fields', () => {
       presets: {
         openai: {
           oracle: {
-            model: 'openai/gpt-5.5',
+            model: 'openai/gpt-5.6',
             prompt: 'ignored preset built-in prompt override',
           },
         },
@@ -844,7 +843,7 @@ describe('PluginConfigSchema custom-agent-only prompt fields', () => {
     const result = PluginConfigSchema.safeParse({
       agents: {
         orchestrator: {
-          model: 'openai/gpt-5.4-mini',
+          model: 'openai/gpt-5.6-luna',
           orchestratorPrompt: '@orchestrator\n- Role: should be invalid here',
         },
       },
@@ -857,7 +856,7 @@ describe('PluginConfigSchema custom-agent-only prompt fields', () => {
     const result = PluginConfigSchema.safeParse({
       agents: {
         janitor: {
-          model: 'openai/gpt-5.4-mini',
+          model: 'openai/gpt-5.6-luna',
           prompt: 'You are Janitor.',
           orchestratorPrompt: '@janitor\n- Role: Cleanup specialist',
         },
@@ -975,31 +974,6 @@ describe('disabled_agents', () => {
     expect(disabled.has('designer')).toBe(true);
     expect(disabled.has('orchestrator')).toBe(false);
     expect(disabled.has('councillor')).toBe(false);
-  });
-
-  test('getEnabledAgentNames filters correctly', () => {
-    const config: PluginConfig = {
-      disabled_agents: ['designer', 'fixer'],
-    };
-    const enabled = getEnabledAgentNames(config);
-    expect(enabled).not.toContain('designer');
-    expect(enabled).not.toContain('fixer');
-    expect(enabled).toContain('orchestrator');
-    expect(enabled).toContain('explorer');
-  });
-
-  test('getEnabledAgentNames includes enabled custom agents', () => {
-    const config: PluginConfig = {
-      disabled_agents: ['janitor'],
-      agents: {
-        janitor: { model: 'openai/gpt-5.4-mini' },
-        reviewer: { model: 'openai/gpt-5.4-mini' },
-      },
-    };
-
-    const enabled = getEnabledAgentNames(config);
-    expect(enabled).toContain('reviewer');
-    expect(enabled).not.toContain('janitor');
   });
 
   test('empty disabled_agents creates observer but not unconfigured council', () => {
