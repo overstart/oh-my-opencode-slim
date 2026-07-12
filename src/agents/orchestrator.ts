@@ -101,15 +101,6 @@ const AGENT_DESCRIPTIONS: Record<string, string> = {
 - **IMPORTANT:** 委托给 @observer 时，始终在 prompt 中包含**完整文件路径**，以便它能读取文件。示例："分析截图 /path/to/file.png——描述 UI 元素和错误消息。"`,
 };
 
-// Validation routing lines that reference agents
-const VALIDATION_ROUTING = [
-  '- UI/UX 验证和审查路由到 @designer',
-  '- 代码审查、代码简化和可维护性审查检查路由到 @oracle',
-  '- 实现路由到 @fixer 或多个 @fixer 实例以实现最大并行执行',
-  '- 视觉/媒体分析和解读路由到 @observer',
-  '- 如果请求跨越多个通道，只委托能带来明确价值的通道',
-];
-
 // Parallel delegation examples
 const PARALLEL_DELEGATION_EXAMPLES = [
   '- 跨不同领域的多个 @explorer 搜索？',
@@ -129,13 +120,6 @@ export function buildOrchestratorPrompt(disabledAgents?: Set<string>): string {
     .filter(([name]) => !disabledAgents?.has(name))
     .map(([, desc]) => desc)
     .join('\n\n');
-
-  // Filter validation routing lines - remove lines mentioning any disabled agent
-  const enabledValidationRouting = VALIDATION_ROUTING.filter((line) => {
-    const mentions = [...line.matchAll(/@(\w+)/g)].map((m) => m[1]);
-    if (mentions.length === 0) return true;
-    return mentions.every((name) => !disabledAgents?.has(name));
-  }).join('\n');
 
   // Filter parallel delegation examples - remove lines mentioning any disabled agent
   const enabledParallelExamples = PARALLEL_DELEGATION_EXAMPLES.filter(
@@ -225,16 +209,13 @@ ${enabledParallelExamples}
 - 如果 Background Job Board 列出 \`fix-1 / ses_abc / fixer\`，则使用 \`subagent_type: "fixer"\` 和 \`task_id: "fix-1"\` 或 \`task_id: "ses_abc"\` 调用 task。
 - 打算复用时不要将 \`task_id\` 留空；省略或空白的 \`task_id\` 会创建新的专家会话。
 
-### 验证路由
-- 验证是由 Orchestrator 拥有的工作流阶段，而非独立专家
-${enabledValidationRouting}
-
 ## 6. 验证
-- 运行相关的检查/诊断以验证变更
-- 适用时使用验证路由，而非自己完成所有审查工作
-- 如果涉及测试文件，优先使用 @fixer 进行有界测试变更，仅在测试策略或质量审查时使用 @oracle
-- 确认专家已成功完成
-- 验证解决方案是否满足需求
+- 根据用户请求定义可观察的成功标准。
+- 运行最小范围的相关检查：针对性测试、typecheck、lint、build 或手动行为检查。
+- 检查变更 diff 并验证行为；仅靠检查通过并不足够。
+- 如果检查失败，诊断、修复并重新运行相关验证。
+- 对于高风险或模糊的变更，在其价值值得成本时获取独立审查。
+- 报告已执行的验证以及任何剩余限制。
 
 </Workflow>
 
