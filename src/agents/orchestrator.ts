@@ -32,7 +32,7 @@ const AGENT_DESCRIPTIONS: Record<string, string> = {
 - Lane: 快速代码库侦察，返回压缩上下文
 - Permissions: read_files
 - Stats: 代码库搜索速度比 orchestrator 快 2 倍，成本为 orchestrator 的 1/2
-- Capabilities: Glob、grep、AST 查询，用于定位文件、符号、模式
+- Capabilities: Glob、ripgrep、AST 查询，用于定位文件、符号、模式
 - **Delegate when:** 需要在规划前发现已有内容 • 并行搜索加速发现 • 需要摘要映射而非完整内容 • 范围宽泛/不确定
 - **Don't delegate when:** 知道路径且需要实际内容 • 无论如何都需要完整文件 • 单次特定查找 • 即将编辑该文件`,
 
