@@ -54,6 +54,46 @@ export type ManualAgentName = (typeof MANUAL_AGENT_NAMES)[number];
 export type ManualAgentPlan = z.infer<typeof ManualAgentPlanSchema>;
 export type ManualPlan = z.infer<typeof ManualPlanSchema>;
 
+// Permission schemas — mirror the SDK's PermissionConfig type with shallow
+// validation. Action values are validated; unknown tool keys pass through.
+const PermissionActionSchema = z.enum(['ask', 'allow', 'deny']);
+
+// A rule key accepts either a single action (whole-tool default) or a
+// pattern→action map (e.g. bash: { "git status*": "allow", "*": "ask" })
+const PermissionRuleSchema = z.union([
+  PermissionActionSchema,
+  z.record(z.string(), PermissionActionSchema),
+]);
+
+// Known keys are typed for typo protection; .catchall() types the index
+// signature to match the SDK's PermissionConfig, so no cast is needed at
+// the assignment site. Unknown tool keys are still validated as rules.
+const PermissionObjectSchema = z
+  .object({
+    read: PermissionRuleSchema.optional(),
+    edit: PermissionRuleSchema.optional(),
+    glob: PermissionRuleSchema.optional(),
+    grep: PermissionRuleSchema.optional(),
+    list: PermissionRuleSchema.optional(),
+    bash: PermissionRuleSchema.optional(),
+    task: PermissionRuleSchema.optional(),
+    external_directory: PermissionRuleSchema.optional(),
+    lsp: PermissionRuleSchema.optional(),
+    skill: PermissionRuleSchema.optional(),
+    todowrite: PermissionActionSchema.optional(),
+    question: PermissionActionSchema.optional(),
+    webfetch: PermissionActionSchema.optional(),
+    websearch: PermissionActionSchema.optional(),
+    codesearch: PermissionActionSchema.optional(),
+    doom_loop: PermissionActionSchema.optional(),
+  })
+  .catchall(PermissionRuleSchema);
+
+export const PermissionConfigSchema = z.union([
+  PermissionActionSchema,
+  PermissionObjectSchema,
+]);
+
 // Agent override configuration (distinct from SDK's AgentConfig)
 export const AgentOverrideConfigSchema = z
   .object({
@@ -81,6 +121,7 @@ export const AgentOverrideConfigSchema = z
     orchestratorPrompt: z.string().min(1).optional(),
     options: z.record(z.string(), z.unknown()).optional(), // provider-specific model options (e.g., textVerbosity, thinking budget)
     displayName: z.string().min(1).optional(),
+    permission: PermissionConfigSchema.optional(), // tool-level permission rules enforced by the SDK
   })
   .strict();
 
@@ -198,16 +239,16 @@ export const FailoverConfigSchema = z
         'When true (default), empty provider responses are treated as failures, ' +
           'triggering fallback/retry. Set to false to treat them as successes.',
       ),
+    // DEPRECATED: accepted for backward compatibility but no longer used.
+    // Fallback is now always disabled when a user explicitly selects a model
+    // via /model, so this flag has no effect.
     runtimeOverride: z
       .boolean()
-      .default(true)
+      .optional()
       .describe(
-        'When true (default), a runtime model selected via /model that is ' +
-          'outside the configured fallback chain will still trigger the chain ' +
-          'on rate-limit errors. When false, out-of-chain runtime picks are ' +
-          'respected and the error surfaces instead of silently falling back ' +
-          'to the chain. Models that are members of the chain always fall back ' +
-          'regardless of this setting.',
+        'DEPRECATED: no longer used. Previously controlled whether out-of-chain ' +
+          'runtime model picks triggered fallback. Fallback is now always ' +
+          'disabled when a user explicitly selects a model via /model.',
       ),
   })
   .strict();

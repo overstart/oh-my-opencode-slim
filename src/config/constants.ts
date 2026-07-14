@@ -51,7 +51,7 @@ export const MAX_POLL_TIME_MS = 5 * 60 * 1000; // 5 minutes
 export const DEFAULT_MAX_SUBAGENT_DEPTH = 3;
 
 // Workflow reminders
-export const PHASE_REMINDER_TEXT = `!IMPORTANT! 调度器工作流：规划通道/依赖 → 分发后台专家 → 跟踪任务 ID → 等待 hook 驱动的完成通知 → 整合最终结果 → 验证。不要轮询运行中的作业、消费运行中作业的输出或推进依赖工作。 !END!`;
+export const PHASE_REMINDER_TEXT = `!IMPORTANT! 调度器工作流：首先选择适合工作的最轻工作流。如果直接执行合理，完成它并按比例验证。否则：规划通道/依赖 -> 分发后台专家 -> 跟踪任务 ID -> 等待 hook 驱动的完成通知 -> 整合最终结果 -> 验证。不要轮询运行中的作业、消费运行中作业的输出或推进依赖工作。 !END!`;
 
 export function formatSystemReminder(text: string): string {
   return `<system-reminder>\n${text}\n</system-reminder>`;

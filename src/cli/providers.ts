@@ -23,7 +23,7 @@ export const MODEL_MAPPINGS = {
     fixer: { model: 'openai/gpt-5.6-luna', variant: 'medium' },
   },
   kimi: {
-    orchestrator: { model: 'kimi-for-coding/k2p5' },
+    orchestrator: { model: 'kimi-for-coding/k2p5', variant: 'max' },
     oracle: { model: 'kimi-for-coding/k2p5', variant: 'high' },
     librarian: { model: 'kimi-for-coding/k2p5', variant: 'low' },
     explorer: { model: 'kimi-for-coding/k2p5', variant: 'low' },
@@ -31,7 +31,7 @@ export const MODEL_MAPPINGS = {
     fixer: { model: 'kimi-for-coding/k2p5', variant: 'low' },
   },
   copilot: {
-    orchestrator: { model: 'github-copilot/claude-opus-4.6' },
+    orchestrator: { model: 'github-copilot/claude-opus-4.6', variant: 'max' },
     oracle: { model: 'github-copilot/claude-opus-4.6', variant: 'high' },
     librarian: { model: 'github-copilot/grok-code-fast-1', variant: 'low' },
     explorer: { model: 'github-copilot/grok-code-fast-1', variant: 'low' },
@@ -42,7 +42,7 @@ export const MODEL_MAPPINGS = {
     fixer: { model: 'github-copilot/claude-sonnet-4.6', variant: 'low' },
   },
   'zai-plan': {
-    orchestrator: { model: 'zai-coding-plan/glm-5' },
+    orchestrator: { model: 'zai-coding-plan/glm-5', variant: 'max' },
     oracle: { model: 'zai-coding-plan/glm-5', variant: 'high' },
     librarian: { model: 'zai-coding-plan/glm-5', variant: 'low' },
     explorer: { model: 'zai-coding-plan/glm-5', variant: 'low' },
@@ -50,13 +50,13 @@ export const MODEL_MAPPINGS = {
     fixer: { model: 'zai-coding-plan/glm-5', variant: 'low' },
   },
   'opencode-go': {
-    orchestrator: { model: 'opencode-go/glm-5.2' },
+    orchestrator: { model: 'opencode-go/minimax-m3', variant: 'max' },
     oracle: { model: 'opencode-go/qwen3.7-max', variant: 'max' },
-    librarian: { model: 'opencode-go/deepseek-v4-flash' },
-    explorer: { model: 'opencode-go/deepseek-v4-flash' },
+    explorer: { model: 'opencode-go/deepseek-v4-flash', variant: 'max' },
+    librarian: { model: 'opencode-go/deepseek-v4-flash', variant: 'high' },
     designer: { model: 'opencode-go/kimi-k2.7-code', variant: 'medium' },
     fixer: { model: 'opencode-go/deepseek-v4-flash', variant: 'high' },
-    observer: { model: 'opencode-go/kimi-k2.6' },
+    observer: { model: 'opencode-go/mimo-v2.5', variant: 'max' },
   },
   free: {
     orchestrator: { model: 'opencode/mimo-v2-pro-free' },
@@ -72,7 +72,10 @@ export const MODEL_MAPPINGS = {
     council: { model: 'volcengine-plan/glm-5.2', variant: 'medium' },
     librarian: { model: 'volcengine-plan/deepseek-v4-flash', variant: 'low' },
     explorer: { model: 'volcengine-plan/deepseek-v4-flash', variant: 'low' },
-    designer: { model: 'volcengine-plan/doubao-seed-2.0-pro', variant: 'medium' },
+    designer: {
+      model: 'volcengine-plan/doubao-seed-2.0-pro',
+      variant: 'medium',
+    },
     fixer: { model: 'volcengine-plan/deepseek-v4-flash', variant: 'low' },
     observer: { model: 'volcengine-plan/deepseek-v4-flash', variant: 'low' },
   },

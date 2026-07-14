@@ -43,6 +43,13 @@ export const CUSTOM_SKILLS: CustomSkill[] = [
     sourcePath: 'src/skills/deepwork',
   },
   {
+    name: 'verification-planning',
+    description:
+      'Plan credible, proportionate evidence before non-trivial implementation',
+    allowedAgents: ['orchestrator'],
+    sourcePath: 'src/skills/verification-planning',
+  },
+  {
     name: 'reflect',
     description:
       'Review repeated work and suggest reusable workflow improvements',
@@ -55,13 +62,6 @@ export const CUSTOM_SKILLS: CustomSkill[] = [
       'Configure, customize, and safely improve oh-my-opencode-slim setups',
     allowedAgents: ['orchestrator'],
     sourcePath: 'src/skills/oh-my-opencode-slim',
-  },
-  {
-    name: 'release-smoke-test',
-    description:
-      'Validate packed release candidates and bugfixes before public publish',
-    allowedAgents: ['orchestrator'],
-    sourcePath: 'src/skills/release-smoke-test',
   },
   {
     name: 'worktrees',

@@ -2,9 +2,12 @@
  * Runtime model fallback for foreground (interactive) agent sessions.
  *
  * When OpenCode fires a session.error, message.updated, or session.status
- * event containing a rate-limit signal, this manager:
+ * event containing a transient error (rate-limit, 403/Forbidden, etc.), this
+ * manager:
  *   1. Looks up the next untried model in the agent's configured chain
- *   2. Aborts the rate-limited prompt via client.session.abort()
+ *   2. Aborts the rate-limited prompt via client.session.abort() on the
+ *      session.status retry path; session.error and message.updated paths
+ *      re-prompt directly without abort.
  *   3. Re-queues the last user message via client.session.promptAsync()
  *      with the new model - promptAsync returns immediately so we never
  *      block the event handler waiting for a full LLM response.
@@ -26,10 +29,10 @@ import { isUserMessageWithParts } from '../types';
 type OpencodeClient = PluginInput['client'];
 
 // ---------------------------------------------------------------------------
-// Rate-limit detection
+// Retryable error detection
 // ---------------------------------------------------------------------------
 
-const RATE_LIMIT_PATTERNS = [
+const RETRYABLE_ERROR_PATTERNS = [
   /\b429\b/,
   /rate.?limit/i,
   /too many requests/i,
@@ -46,9 +49,15 @@ const RATE_LIMIT_PATTERNS = [
   /monthly usage limit/i,
   /5-hour usage limit/i,
   /weekly usage limit/i,
+  // Forbidden / 403 — providers return these instead of explicit rate-limit
+  // signals, but they are equally transient and should trigger fallback.
+  /\b403\b/,
+  /forbidden/i,
+  /blocked by gateway/i,
 ];
 
 const OUTAGE_STATUS_CODES = new Set([500, 502, 503, 504]);
+// (ponytail) validated against real OpenCode error shapes
 const TRANSPORT_CODES = new Set([
   'ECONNREFUSED',
   'ECONNRESET',
@@ -93,7 +102,7 @@ export function isFailoverError(error: unknown): boolean {
   if (!error) return false;
   if (typeof error === 'string') {
     return (
-      RATE_LIMIT_PATTERNS.some((pattern) => pattern.test(error)) ||
+      RETRYABLE_ERROR_PATTERNS.some((pattern) => pattern.test(error)) ||
       PROVIDER_OUTAGE_PATTERNS.some((pattern) => pattern.test(error)) ||
       TRANSPORT_MESSAGE_PATTERNS.some((pattern) => pattern.test(error))
     );
@@ -114,6 +123,7 @@ export function isFailoverError(error: unknown): boolean {
   const statusCode = extractStatusCode(err);
   if (
     statusCode === 429 ||
+    statusCode === 403 ||
     (statusCode !== undefined && OUTAGE_STATUS_CODES.has(statusCode))
   ) {
     return true;
@@ -145,7 +155,7 @@ export function isFailoverError(error: unknown): boolean {
     err.data?.responseBody ?? '',
   ].join(' ');
   const hasFailoverReason =
-    RATE_LIMIT_PATTERNS.some((p) => p.test(text)) ||
+    RETRYABLE_ERROR_PATTERNS.some((p) => p.test(text)) ||
     PROVIDER_OUTAGE_PATTERNS.some((p) => p.test(text));
   // Providers sometimes return recoverable rate-limit/outage payloads with
   // an HTTP 400 wrapper. Preserve application-level 400 failures, but let a
@@ -153,9 +163,17 @@ export function isFailoverError(error: unknown): boolean {
   return hasFailoverReason;
 }
 
-/** @deprecated Use isFailoverError instead. */
-export function isRateLimitError(error: unknown): boolean {
+/**
+ * Checks whether an error is a transient/retryable error (rate-limit,
+ * 403/Forbidden, etc.) that should trigger model fallback.
+ */
+export function isRetryableError(error: unknown): boolean {
   return isFailoverError(error);
+}
+
+/** @deprecated Use isRetryableError instead. */
+export function isRateLimitError(error: unknown): boolean {
+  return isRetryableError(error);
 }
 
 // ---------------------------------------------------------------------------
@@ -201,6 +219,18 @@ export class ForegroundFallbackManager {
     return this.inProgress.has(sessionID);
   }
 
+  /**
+   * Disable the fallback chain for a specific agent.
+   * After calling this, rate-limit errors for that agent surface instead of
+   * silently falling back through the chain.
+   */
+  disableChain(agentName: string): void {
+    // Keep the key present (known agent, no chain) rather than deleting it,
+    // so resolveChain's "known agent without a chain" path applies and the
+    // shared runtimeChains reference retains the agent entry.
+    this.chains[agentName] = [];
+  }
+
   registerSessionAgent(sessionID: string, agentName: string): void {
     const normalizedAgentName = agentName.trim();
     if (
@@ -220,25 +250,23 @@ export class ForegroundFallbackManager {
      * e.g. { orchestrator: ['anthropic/claude-opus-4-5', 'openai/gpt-4o'] }
      * The first model that hasn't been tried yet is selected on each fallback.
      */
-    private readonly chains: Record<string, string[]>,
+    private chains: Record<string, string[]>,
     private readonly enabled: boolean,
     /** Consecutive 429s tolerated on the same model before swap/abort. */
     private readonly maxRetries: number = 3,
     coordinator?: SessionLifecycle,
-    /**
-     * When true (default), a runtime model outside the configured chain
-     * still triggers fallback on rate-limit errors. When false, out-of-chain
-     * runtime picks are respected and the error surfaces instead. Models
-     * that are members of the chain always fall back regardless.
-     */
-    private readonly runtimeOverride: boolean = true,
   ) {
     if (coordinator) {
       coordinator.onSessionDeleted((id) => {
         this.sessionModel.delete(id);
         this.sessionAgent.delete(id);
         this.sessionTried.delete(id);
-        this.inProgress.delete(id);
+        // NOTE: inProgress is intentionally NOT cleared here —
+        // the finally blocks in tryFallback() and tryFallbackWithAbort()
+        // manage inProgress lifecycle. Clearing it here would make
+        // isFallbackInProgress() return false during the abort/re-prompt
+        // cycle, letting the task-session-manager treat the abort idle
+        // as a real completion and report a background task as cancelled.
         this.lastTrigger.delete(id);
         this.lastTriggerModel.delete(id);
         this.sessionRetries.delete(id);
@@ -279,7 +307,7 @@ export class ForegroundFallbackManager {
         }
         // Failover-worthy error on an individual message
         if (info.error && isFailoverError(info.error)) {
-          if (this.shouldIntervene(sessionID)) {
+          if (this.shouldTriggerFallback(sessionID)) {
             await this.tryFallback(sessionID);
           }
         } else {
@@ -299,7 +327,7 @@ export class ForegroundFallbackManager {
           sessionID &&
           props.error &&
           isFailoverError(props.error) &&
-          this.shouldIntervene(sessionID)
+          this.shouldTriggerFallback(sessionID)
         ) {
           await this.tryFallback(sessionID);
         }
@@ -324,7 +352,31 @@ export class ForegroundFallbackManager {
             (props.status.message !== undefined &&
               isFailoverError({ message: props.status.message })));
         if (isFailoverRetry) {
-          if (this.checkRetryBudget(sessionID)) {
+          // Guard: stale retry event from a previous model's retry loop.
+          // After a fallback, lastTriggerModel holds the OLD model (set by
+          // isDeduped before the fallback), while sessionModel holds the NEW
+          // model. A stale retry from the old model arrives with attempt > 1
+          // (continuation of old retry loop). A genuine retry from the new
+          // model arrives with attempt === 1 (first retry for new model).
+          const prevModel = this.lastTriggerModel.get(sessionID);
+          const curModel = this.sessionModel.get(sessionID);
+          const lastTriggerTime = this.lastTrigger.get(sessionID) ?? 0;
+          const attempt = props.status?.attempt ?? 1;
+          const modelChanged =
+            prevModel !== undefined &&
+            curModel !== undefined &&
+            prevModel !== curModel;
+          const withinDedupWindow =
+            Date.now() - lastTriggerTime < DEDUP_WINDOW_MS;
+          if (modelChanged && withinDedupWindow && attempt > 1) {
+            // Model changed since last trigger, within dedup window, and
+            // attempt > 1: this is a stale retry from the old model's
+            // retry loop (continuation of previous attempts). Skip it.
+            break;
+          }
+          // Otherwise (attempt === 1, or model didn't change, or outside
+          // dedup window): process as genuine retry for current model.
+          if (this.shouldTriggerFallback(sessionID)) {
             await this.tryFallbackWithAbort(sessionID);
           }
           break;
@@ -375,11 +427,10 @@ export class ForegroundFallbackManager {
   // ---------------------------------------------------------------------------
 
   /** Increment retry counter and return true when the budget is exhausted.
-   *  Used by the session.status retry path — each retry counts toward the
+   *  Used by shouldIntervene when tried > 0 — each retry counts toward the
    *  budget and only triggers fallback after maxRetries - 1 absorptions.
-   *  Non-retry paths (session.error / message.updated) use shouldIntervene(),
-   *  which bypasses the counter on first occurrence. */
-  private checkRetryBudget(sessionID: string): boolean {
+   *  First failover retry (tried === 0) bypasses the counter via shouldIntervene. */
+  private consumeRetryBudget(sessionID: string): boolean {
     const tried = this.sessionRetries.get(sessionID) ?? 0;
     if (tried < this.maxRetries - 1) {
       this.sessionRetries.set(sessionID, tried + 1);
@@ -394,12 +445,12 @@ export class ForegroundFallbackManager {
     return true;
   }
 
-  /** For non-retry paths (session.error, message.updated): intervene immediately
-   *  unless the session is already in a retry window (has prior retries). */
-  private shouldIntervene(sessionID: string): boolean {
+  /** Intervene immediately on first occurrence (tried === 0), otherwise
+   *  delegate to retry budget. Used by all three event paths. */
+  private shouldTriggerFallback(sessionID: string): boolean {
     const tried = this.sessionRetries.get(sessionID) ?? 0;
     if (tried === 0) return true;
-    return this.checkRetryBudget(sessionID);
+    return this.consumeRetryBudget(sessionID);
   }
 
   private isRecoveredStatus(statusType: string | undefined): boolean {
@@ -492,32 +543,6 @@ export class ForegroundFallbackManager {
       // "next" fallback target.
       if (!currentModel && agentName && chain.length > 0) {
         currentModel = chain[0];
-      }
-
-      // Guard: when runtimeOverride is false, skip fallback for models
-      // that are not members of the configured chain. This respects a
-      // deliberate runtime `/model` pick (e.g. an expensive model outside
-      // the chain) and lets the error surface instead of silently swapping
-      // to the chain's default. Models that ARE in the chain always fall
-      // back normally regardless of this setting.
-      if (
-        !this.runtimeOverride &&
-        currentModel &&
-        !chain.includes(currentModel)
-      ) {
-        log(
-          '[foreground-fallback] current model not in chain, skipping fallback (runtimeOverride=false)',
-          {
-            sessionID,
-            agentName,
-            currentModel,
-            chain,
-          },
-        );
-        // Abort the session so the rate-limit error surfaces to the user
-        // instead of leaving the session in a silent retry loop.
-        await abortSessionWithTimeout(this.client, sessionID);
-        return;
       }
 
       if (!this.sessionTried.has(sessionID)) {

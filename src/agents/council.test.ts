@@ -38,9 +38,7 @@ describe('formatCouncillorResults', () => {
       'Consider Fastify for better performance and built-in type validation.',
     );
     expect(formatted).toContain('**Councillor Responses**:');
-    expect(formatted).toContain(
-      '你必须按照综合流程步骤生成输出',
-    );
+    expect(formatted).toContain('你必须按照综合流程步骤生成输出');
     expect(formatted).toContain(
       '共识置信度评级（unanimous、majority 或 split）',
     );

@@ -194,6 +194,9 @@ function applyOverrides(
   if (override.displayName) {
     agent.displayName = override.displayName;
   }
+  if (override.permission) {
+    agent.config.permission = override.permission;
+  }
 }
 
 function isKnownAgentName(name: string): boolean {
@@ -270,6 +273,13 @@ function applyDefaultPermissions(
   configuredSkills?: string[],
   disabledSkills?: string[],
 ): void {
+  // If the user supplied a shorthand string permission (e.g. "ask"),
+  // it already applies to all tools — preserve it as-is and skip the
+  // object merge, which would corrupt it by spreading the string.
+  if (typeof agent.config.permission === 'string') {
+    return;
+  }
+
   const existing = (agent.config.permission ?? {}) as Record<
     string,
     'ask' | 'allow' | 'deny' | Record<string, 'ask' | 'allow' | 'deny'>
@@ -534,14 +544,14 @@ export function createAgents(
     orchestratorPrompts.appendPrompt,
   );
 
+  if (orchestratorOverride) {
+    applyOverrides(orchestrator, orchestratorOverride);
+  }
   applyDefaultPermissions(
     orchestrator,
     orchestratorOverride?.skills,
     config?.disabled_skills,
   );
-  if (orchestratorOverride) {
-    applyOverrides(orchestrator, orchestratorOverride);
-  }
 
   // Collect all display names from orchestrator and all subagents
   const displayNameMap = new Map<string, string>();
@@ -728,4 +738,3 @@ export function getDisabledAgents(config?: PluginConfig): Set<string> {
   }
   return disabled;
 }
-

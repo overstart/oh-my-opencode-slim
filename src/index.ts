@@ -139,6 +139,7 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
   let agents: ReturnType<typeof getAgentConfigs>;
   let mcps: ReturnType<typeof createBuiltinMcps>;
   let modelArrayMap: Record<string, Array<{ id: string; variant?: string }>>;
+  let everModelSwitched: Set<string>;
   let runtimeChains: Record<string, string[]>;
   let multiplexerConfig: MultiplexerConfig;
   let multiplexerEnabled: boolean;
@@ -146,6 +147,9 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
   let multiplexerSessionManager: MultiplexerSessionManager;
   let autoUpdateChecker: ReturnType<typeof createAutoUpdateCheckerHook>;
   let sessionAgentMap: Map<string, string>;
+  // ponytail: cache sessionID -> project directory so TUI model writes
+  // land in the right per-project file after a project switch (ctx.directory is stale)
+  const sessionDirectories = new Map<string, string>();
   let sessionLifecycle: SessionLifecycle;
 
   let chatHeadersHook: ReturnType<typeof createChatHeadersHook>;
@@ -213,6 +217,7 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
       string,
       Array<{ id: string; variant?: string }>
     >;
+    everModelSwitched = new Set<string>();
     runtimeChains = {} as Record<string, string[]>;
     for (const agentDef of agentDefs) {
       if (agentDef._modelArray?.length) {
@@ -313,7 +318,6 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
       config.fallback?.enabled !== false,
       config.fallback?.maxRetries ?? 3,
       sessionLifecycle,
-      config.fallback?.runtimeOverride ?? true,
     );
 
     deepworkCommandHook = createDeepworkCommandHook();
@@ -562,6 +566,18 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
           const existing = (opencodeConfig.agent as Record<string, unknown>)[
             name
           ] as Record<string, unknown> | undefined;
+          // User explicitly picked a model via /model → disable fallback.
+          // Only marks the agent if the model differs from the chain primary.
+          // Once marked, stays disabled even if user switches back to chain[0].
+          if (existing && typeof existing.model === 'string') {
+            const primary = modelArrayMap[name]?.[0]?.id;
+            if (primary && existing.model !== primary) {
+              everModelSwitched.add(name);
+            }
+            if (everModelSwitched.has(name)) {
+              foregroundFallback.disableChain(name);
+            }
+          }
           if (existing) {
             // Shallow merge: plugin defaults first, user overrides win
             (opencodeConfig.agent as Record<string, unknown>)[name] = {
@@ -772,10 +788,13 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
           tuiAgentVariants[agentDef.name] = resolvedVariant;
         }
       }
-      recordTuiAgentModels({
-        agentModels: tuiAgentModels,
-        agentVariants: tuiAgentVariants,
-      });
+      recordTuiAgentModels(
+        {
+          agentModels: tuiAgentModels,
+          agentVariants: tuiAgentVariants,
+        },
+        ctx.directory,
+      );
 
       applyOrchestratorModelConfig({
         agents: configAgent,
@@ -862,6 +881,7 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
               modelID?: string;
             };
             sessionID?: string;
+            directory?: string;
           };
           sessionID?: string;
           id?: string;
@@ -888,11 +908,15 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
           const agentName = resolveRuntimeAgentName(config, info.agent);
           const model = `${providerID}/${modelID}`;
           const variant = resolveTuiVariantForModel(agentName, model);
-          recordTuiAgentModel({
-            agentName,
-            model,
-            variant: variant ?? null,
-          });
+          recordTuiAgentModel(
+            {
+              agentName,
+              model,
+              variant: variant ?? null,
+            },
+            (info?.sessionID && sessionDirectories.get(info.sessionID)) ??
+              ctx.directory,
+          );
         }
       }
 
@@ -901,6 +925,11 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
         const parentSessionId = event.properties?.info?.parentID;
         if (depthTracker && childSessionId && parentSessionId) {
           depthTracker.registerChild(parentSessionId, childSessionId);
+        }
+        const createdSessionId = event.properties?.info?.id;
+        const createdSessionDir = event.properties?.info?.directory;
+        if (createdSessionId && createdSessionDir) {
+          sessionDirectories.set(createdSessionId, createdSessionDir);
         }
       }
 
@@ -981,6 +1010,7 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
         }
         if (sessionID) {
           sessionAgentMap.delete(sessionID);
+          sessionDirectories.delete(sessionID);
         }
       }
     },

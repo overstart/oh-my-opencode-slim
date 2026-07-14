@@ -3,8 +3,10 @@ import { SessionLifecycle } from '../session-lifecycle';
 import {
   ForegroundFallbackManager,
   isFailoverError,
-  isRateLimitError,
+  isRetryableError,
 } from './index';
+
+// ACCEPTANCE GAP: config() hook behaviour is not covered by CI — verify live.
 
 type ForegroundFallbackClient = ConstructorParameters<
   typeof ForegroundFallbackManager
@@ -82,38 +84,38 @@ describe('isFailoverError', () => {
   });
 
   test('returns true for 429 status code', () => {
-    expect(isRateLimitError({ data: { statusCode: 429 } })).toBe(true);
+    expect(isRetryableError({ data: { statusCode: 429 } })).toBe(true);
   });
 
   test('returns true for "rate limit" in message', () => {
-    expect(isRateLimitError({ message: 'Rate limit exceeded' })).toBe(true);
+    expect(isRetryableError({ message: 'Rate limit exceeded' })).toBe(true);
   });
 
   test('returns true for "quota exceeded" in responseBody', () => {
-    expect(isRateLimitError({ data: { responseBody: 'quota exceeded' } })).toBe(
+    expect(isRetryableError({ data: { responseBody: 'quota exceeded' } })).toBe(
       true,
     );
   });
 
   test('returns true for "usage exceeded"', () => {
-    expect(isRateLimitError({ message: 'usage exceeded' })).toBe(true);
+    expect(isRetryableError({ message: 'usage exceeded' })).toBe(true);
   });
 
   test('returns true for "overloaded"', () => {
-    expect(isRateLimitError({ message: 'overloaded_error' })).toBe(true);
+    expect(isRetryableError({ message: 'overloaded_error' })).toBe(true);
   });
 
   test('returns true for "Insufficient balance."', () => {
-    expect(isRateLimitError({ message: 'Insufficient balance.' })).toBe(true);
+    expect(isRetryableError({ message: 'Insufficient balance.' })).toBe(true);
   });
 
   test('returns true for "Service Unavailable"', () => {
-    expect(isRateLimitError({ message: 'Service Unavailable' })).toBe(true);
+    expect(isRetryableError({ message: 'Service Unavailable' })).toBe(true);
   });
 
   test('returns true for "Monthly usage limit reached"', () => {
     expect(
-      isRateLimitError({
+      isRetryableError({
         message: 'Monthly usage limit reached. Resets in X days.',
       }),
     ).toBe(true);
@@ -121,7 +123,7 @@ describe('isFailoverError', () => {
 
   test('returns true for "5-hour usage limit reached"', () => {
     expect(
-      isRateLimitError({
+      isRetryableError({
         message: '5-hour usage limit reached. Resets in 36min.',
       }),
     ).toBe(true);
@@ -129,28 +131,44 @@ describe('isFailoverError', () => {
 
   test('returns true for "Weekly usage limit reached"', () => {
     expect(
-      isRateLimitError({
+      isRetryableError({
         message: 'Weekly usage limit reached. Resets in 2 days.',
       }),
     ).toBe(true);
   });
 
   test('returns false for non-rate-limit error', () => {
-    expect(isRateLimitError({ message: 'invalid API key' })).toBe(false);
+    expect(isRetryableError({ message: 'invalid API key' })).toBe(false);
   });
 
   test('returns false for null', () => {
-    expect(isRateLimitError(null)).toBe(false);
+    expect(isRetryableError(null)).toBe(false);
   });
 
   test('returns true for string error with rate-limit message', () => {
-    expect(isRateLimitError('Usage exceeded')).toBe(true);
-    expect(isRateLimitError('rate limit exceeded')).toBe(true);
-    expect(isRateLimitError('quota exceeded')).toBe(true);
+    expect(isRetryableError('Usage exceeded')).toBe(true);
+    expect(isRetryableError('rate limit exceeded')).toBe(true);
+    expect(isRetryableError('quota exceeded')).toBe(true);
   });
 
   test('returns false for non-object', () => {
-    expect(isRateLimitError(42)).toBe(false);
+    expect(isRetryableError(42)).toBe(false);
+  });
+
+  test('returns true for 403 status code', () => {
+    expect(isRetryableError({ data: { statusCode: 403 } })).toBe(true);
+  });
+
+  test('returns true for "Forbidden" in message', () => {
+    expect(isRetryableError({ message: '403 Forbidden' })).toBe(true);
+  });
+
+  test('returns true for "blocked by gateway" in message', () => {
+    expect(isRetryableError({ message: 'blocked by gateway' })).toBe(true);
+  });
+
+  test('returns true for "forbidden" (lowercase) in message', () => {
+    expect(isRetryableError({ message: 'forbidden' })).toBe(true);
   });
 });
 
@@ -405,7 +423,7 @@ describe('ForegroundFallbackManager message.updated', () => {
 // ---------------------------------------------------------------------------
 
 describe('ForegroundFallbackManager session.status', () => {
-  test('aborts active retry-budget-exhausted session before fallback re-prompt', async () => {
+  test('aborts session before fallback re-prompt on first failover retry', async () => {
     const calls: string[] = [];
     const { client, mocks } = createMockClient({
       abortImpl: async () => {
@@ -429,19 +447,17 @@ describe('ForegroundFallbackManager session.status', () => {
       },
     });
 
-    for (const attempt of [1, 2, 3]) {
-      await mgr.handleEvent({
-        type: 'session.status',
-        properties: {
-          sessionID: 'sess-retry-abort-before-prompt',
-          status: {
-            type: 'retry',
-            attempt,
-            message: 'rate limit, retrying...',
-          },
+    await mgr.handleEvent({
+      type: 'session.status',
+      properties: {
+        sessionID: 'sess-retry-abort-before-prompt',
+        status: {
+          type: 'retry',
+          attempt: 1,
+          message: 'rate limit, retrying...',
         },
-      });
-    }
+      },
+    });
 
     expect(mocks.abort).toHaveBeenCalledTimes(1);
     expect(mocks.promptAsync).toHaveBeenCalledTimes(1);
@@ -627,7 +643,7 @@ describe('ForegroundFallbackManager session.status', () => {
     expect(mocks.promptAsync).not.toHaveBeenCalled();
   });
 
-  test('absorbs failover retries until the retry budget is exhausted', async () => {
+  test('triggers immediate fallback on first failover retry', async () => {
     const { client, mocks } = createMockClient();
     const mgr = new ForegroundFallbackManager(client, makeChains(), true, 3);
 
@@ -642,7 +658,6 @@ describe('ForegroundFallbackManager session.status', () => {
       },
     });
 
-    // The first retry is absorbed; only exhaustion triggers a failover.
     await mgr.handleEvent({
       type: 'session.status',
       properties: {
@@ -654,10 +669,10 @@ describe('ForegroundFallbackManager session.status', () => {
         },
       },
     });
-    expect(mocks.promptAsync).toHaveBeenCalledTimes(0);
+    expect(mocks.promptAsync).toHaveBeenCalledTimes(1);
   });
 
-  test('switches models after three failover retries', async () => {
+  test('switches to fallback model on first failover retry', async () => {
     const { client, mocks } = createMockClient();
     const mgr = new ForegroundFallbackManager(client, makeChains(), true, 3);
 
@@ -672,7 +687,6 @@ describe('ForegroundFallbackManager session.status', () => {
       },
     });
 
-    // First retry is absorbed.
     await mgr.handleEvent({
       type: 'session.status',
       properties: {
@@ -680,31 +694,6 @@ describe('ForegroundFallbackManager session.status', () => {
         status: {
           type: 'retry',
           attempt: 1,
-          message: 'rate limit, retrying...',
-        },
-      },
-    });
-    expect(mocks.promptAsync).toHaveBeenCalledTimes(0);
-
-    // Second retry is also absorbed; the third exhausts the budget.
-    await mgr.handleEvent({
-      type: 'session.status',
-      properties: {
-        sessionID: 'sess-retry2',
-        status: {
-          type: 'retry',
-          attempt: 2,
-          message: 'rate limit, retrying...',
-        },
-      },
-    });
-    await mgr.handleEvent({
-      type: 'session.status',
-      properties: {
-        sessionID: 'sess-retry2',
-        status: {
-          type: 'retry',
-          attempt: 3,
           message: 'rate limit, retrying...',
         },
       },
@@ -766,7 +755,7 @@ describe('ForegroundFallbackManager session.status', () => {
     expect(mocks.promptAsync).toHaveBeenCalledTimes(1);
   });
 
-  test('non-rate-limit status does not clear retries (no infinite loop from abort side effects)', async () => {
+  test('non-rate-limit retry does not trigger fallback but rate-limit does', async () => {
     const { client, mocks } = createMockClient();
     const mgr = new ForegroundFallbackManager(client, makeChains(), true, 3);
 
@@ -781,7 +770,17 @@ describe('ForegroundFallbackManager session.status', () => {
       },
     });
 
-    // First rate-limit is absorbed.
+    // Non-rate-limit retry (e.g. abort side effect): must NOT trigger fallback.
+    await mgr.handleEvent({
+      type: 'session.status',
+      properties: {
+        sessionID: 'sess-nonrl',
+        status: { type: 'retry', attempt: 1, message: 'aborted' },
+      },
+    });
+    expect(mocks.promptAsync).toHaveBeenCalledTimes(0);
+
+    // Genuine rate-limit retry triggers immediate fallback.
     await mgr.handleEvent({
       type: 'session.status',
       properties: {
@@ -793,25 +792,67 @@ describe('ForegroundFallbackManager session.status', () => {
         },
       },
     });
-    expect(mocks.promptAsync).toHaveBeenCalledTimes(0);
+    expect(mocks.promptAsync).toHaveBeenCalledTimes(1);
+  });
 
-    // Non-rate-limit status (e.g. abort side effect): must NOT reset retries.
-    // If it did, the next rate-limit would see tried=0 and trigger immediate
-    // fallback again — the infinite loop.
-    await mgr.handleEvent({
-      type: 'session.status',
-      properties: {
-        sessionID: 'sess-nonrl',
-        status: { type: 'retry', attempt: 1, message: 'aborted' },
+  test('ignores stale retry event from original model after fallback switches models', async () => {
+    // greptile-apps race condition: after a fallback succeeds and the manager
+    // switches to model B, a delayed retry event from model A's original retry
+    // loop (already in-flight when the abort happened) should NOT trigger a
+    // second fallback — it carries the old model's error, not model B's.
+    const calls: string[] = [];
+    const { client, mocks } = createMockClient({
+      abortImpl: async () => {
+        calls.push('abort');
+      },
+      promptAsyncImpl: async () => {
+        calls.push('promptAsync');
+        return {};
       },
     });
-    expect(mocks.promptAsync).toHaveBeenCalledTimes(0);
+    const mgr = new ForegroundFallbackManager(client, makeChains(), true, 3);
 
-    // Second rate-limit remains within the budget.
+    // Seed session with model A (anthropic/claude-opus-4-5)
+    await mgr.handleEvent({
+      type: 'message.updated',
+      properties: {
+        info: {
+          sessionID: 'sess-stale',
+          providerID: 'anthropic',
+          modelID: 'claude-opus-4-5',
+        },
+      },
+    });
+
+    // First retry event: model A rate-limited → triggers fallback to model B
     await mgr.handleEvent({
       type: 'session.status',
       properties: {
-        sessionID: 'sess-nonrl',
+        sessionID: 'sess-stale',
+        status: {
+          type: 'retry',
+          attempt: 1,
+          message: 'rate limit, retrying...',
+        },
+      },
+    });
+
+    expect(mocks.abort).toHaveBeenCalledTimes(1);
+    expect(mocks.promptAsync).toHaveBeenCalledTimes(1);
+    const firstCall = mocks.promptAsync.mock.calls[0] as [
+      { body: { model: { providerID: string; modelID: string } } },
+    ];
+    expect(firstCall[0].body.model).toEqual({
+      providerID: 'openai',
+      modelID: 'gpt-4o',
+    });
+
+    // Stale retry event from the ORIGINAL model A arrives after the switch.
+    // The session model is now openai/gpt-4o, so this event should be ignored.
+    await mgr.handleEvent({
+      type: 'session.status',
+      properties: {
+        sessionID: 'sess-stale',
         status: {
           type: 'retry',
           attempt: 2,
@@ -819,21 +860,89 @@ describe('ForegroundFallbackManager session.status', () => {
         },
       },
     });
-    expect(mocks.promptAsync).toHaveBeenCalledTimes(0);
 
-    // Third rate-limit exhausts the budget.
+    // Should NOT trigger another fallback — the event is stale
+    expect(mocks.abort).toHaveBeenCalledTimes(1);
+    expect(mocks.promptAsync).toHaveBeenCalledTimes(1);
+  });
+
+  test('does NOT ignore genuine retry from fallback model within dedup window', async () => {
+    // greptile-apps issue #2: a genuine retry from the fallback model (model B)
+    // arriving within the dedup window should trigger a fallback, not be ignored.
+    // The previous fix used lastTriggerModel which still held model A, causing
+    // model B's genuine retry to be mistaken for a stale retry from model A.
+    const calls: string[] = [];
+    const { client, mocks } = createMockClient({
+      abortImpl: async () => {
+        calls.push('abort');
+      },
+      promptAsyncImpl: async () => {
+        calls.push('promptAsync');
+        return {};
+      },
+    });
+    const mgr = new ForegroundFallbackManager(client, makeChains(), true, 1); // maxRetries=1 for immediate fallback
+
+    // Seed session with model A
+    await mgr.handleEvent({
+      type: 'message.updated',
+      properties: {
+        info: {
+          sessionID: 'sess-genuine-retry',
+          providerID: 'anthropic',
+          modelID: 'claude-opus-4-5',
+        },
+      },
+    });
+
+    // First retry event: model A rate-limited → triggers fallback to model B
     await mgr.handleEvent({
       type: 'session.status',
       properties: {
-        sessionID: 'sess-nonrl',
+        sessionID: 'sess-genuine-retry',
         status: {
           type: 'retry',
-          attempt: 3,
+          attempt: 1,
           message: 'rate limit, retrying...',
         },
       },
     });
+
+    expect(mocks.abort).toHaveBeenCalledTimes(1);
     expect(mocks.promptAsync).toHaveBeenCalledTimes(1);
+    const firstCall = mocks.promptAsync.mock.calls[0] as [
+      { body: { model: { providerID: string; modelID: string } } },
+    ];
+    expect(firstCall[0].body.model).toEqual({
+      providerID: 'openai',
+      modelID: 'gpt-4o',
+    });
+
+    // Now model B (openai/gpt-4o) is active. A GENUINE retry from model B
+    // arrives within the dedup window (immediately after). This should trigger
+    // another fallback to model C (google/gemini-2.5-pro), NOT be ignored.
+    await mgr.handleEvent({
+      type: 'session.status',
+      properties: {
+        sessionID: 'sess-genuine-retry',
+        status: {
+          type: 'retry',
+          attempt: 1, // attempt resets for new model
+          message: 'rate limit, retrying...',
+        },
+      },
+    });
+
+    // Should trigger a second fallback to model C
+    expect(mocks.abort).toHaveBeenCalledTimes(2);
+    expect(mocks.promptAsync).toHaveBeenCalledTimes(2);
+    const secondCall = mocks.promptAsync.mock.calls[1] as [
+      { body: { model: { providerID: string; modelID: string } } },
+    ];
+    expect(secondCall[0].body.model).toEqual({
+      providerID: 'google',
+      modelID: 'gemini-2.5-pro',
+    });
   });
 });
 
@@ -1164,6 +1273,30 @@ describe('ForegroundFallbackManager session.deleted', () => {
     // Triggered (dedup was cleared by deletion)
     expect(mocks.promptAsync).toHaveBeenCalledTimes(1);
   });
+
+  test('does NOT clear inProgress when session.deleted fires', () => {
+    const coordinator = new SessionLifecycle(() => {});
+    const { client } = createMockClient();
+    const mgr = new ForegroundFallbackManager(
+      client,
+      makeChains(),
+      true,
+      3,
+      coordinator,
+    );
+
+    // Simulate: fallback is in progress
+    const sessionID = 'sess-inprog';
+    (mgr as any).inProgress.add(sessionID);
+    expect(mgr.isFallbackInProgress(sessionID)).toBe(true);
+
+    // Session deleted fires (as it does during abort in tryFallbackWithAbort)
+    coordinator.dispatchSessionDeleted(sessionID);
+
+    // inProgress must survive — the finally block of tryFallback/WithAbort
+    // manages it, not the session.deleted callback
+    expect(mgr.isFallbackInProgress(sessionID)).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1260,92 +1393,22 @@ describe('ForegroundFallbackManager resolveChain cross-agent isolation', () => {
 });
 
 // ---------------------------------------------------------------------------
-// runtimeOverride config
+// disableChain API
 // ---------------------------------------------------------------------------
 
-describe('ForegroundFallbackManager runtimeOverride', () => {
-  test('falls back for out-of-chain model when runtimeOverride=true (default)', async () => {
+describe('ForegroundFallbackManager disableChain', () => {
+  test('after disableChain, rate-limit error surfaces instead of falling back', async () => {
     const { client, mocks } = createMockClient();
-    const mgr = new ForegroundFallbackManager(
-      client,
-      makeChains(),
-      true,
-      3,
-      undefined,
-      true, // runtimeOverride
-    );
+    const mgr = new ForegroundFallbackManager(client, makeChains(), true);
 
-    // Simulate session using a model NOT in any chain
+    mgr.disableChain('orchestrator');
+
+    // Seed session with orchestrator model and trigger rate-limit
     await mgr.handleEvent({
       type: 'message.updated',
       properties: {
         info: {
-          sessionID: 'sess-1',
-          agent: 'orchestrator',
-          providerID: 'custom',
-          modelID: 'expensive-model',
-          error: { message: 'rate limit exceeded' },
-        },
-      },
-    });
-
-    // runtimeOverride=true → should fall back even for out-of-chain model
-    expect(mocks.promptAsync).toHaveBeenCalledTimes(1);
-    const call = mocks.promptAsync.mock.calls[0] as [
-      { body: { model: { providerID: string; modelID: string } } },
-    ];
-    // Falls back to chain[0] = anthropic/claude-opus-4-5
-    expect(call[0].body.model.providerID).toBe('anthropic');
-    expect(call[0].body.model.modelID).toBe('claude-opus-4-5');
-  });
-
-  test('skips fallback for out-of-chain model when runtimeOverride=false', async () => {
-    const { client, mocks } = createMockClient();
-    const mgr = new ForegroundFallbackManager(
-      client,
-      makeChains(),
-      true,
-      3,
-      undefined,
-      false, // runtimeOverride
-    );
-
-    // Simulate session using a model NOT in any chain
-    await mgr.handleEvent({
-      type: 'message.updated',
-      properties: {
-        info: {
-          sessionID: 'sess-2',
-          agent: 'orchestrator',
-          providerID: 'custom',
-          modelID: 'expensive-model',
-          error: { message: 'rate limit exceeded' },
-        },
-      },
-    });
-
-    // runtimeOverride=false + model not in chain → abort session, no fallback
-    expect(mocks.promptAsync).toHaveBeenCalledTimes(0);
-    expect(mocks.abort).toHaveBeenCalledTimes(1);
-  });
-
-  test('always falls back for in-chain model regardless of runtimeOverride=false', async () => {
-    const { client, mocks } = createMockClient();
-    const mgr = new ForegroundFallbackManager(
-      client,
-      makeChains(),
-      true,
-      3,
-      undefined,
-      false, // runtimeOverride
-    );
-
-    // Simulate session using a model that IS in the chain
-    await mgr.handleEvent({
-      type: 'message.updated',
-      properties: {
-        info: {
-          sessionID: 'sess-3',
+          sessionID: 'sess-disabled',
           agent: 'orchestrator',
           providerID: 'anthropic',
           modelID: 'claude-opus-4-5',
@@ -1354,151 +1417,38 @@ describe('ForegroundFallbackManager runtimeOverride', () => {
       },
     });
 
-    // Model IS in chain → should fall back regardless of runtimeOverride
-    expect(mocks.promptAsync).toHaveBeenCalledTimes(1);
-    const call = mocks.promptAsync.mock.calls[0] as [
-      { body: { model: { providerID: string; modelID: string } } },
-    ];
-    // Falls back to chain[1] = openai/gpt-4o (chain[0] is the current model)
-    expect(call[0].body.model.providerID).toBe('openai');
-    expect(call[0].body.model.modelID).toBe('gpt-4o');
+    // Chain disabled → no fallback, error surfaces
+    expect(mocks.promptAsync).not.toHaveBeenCalled();
+    expect(mocks.abort).not.toHaveBeenCalled();
   });
 
-  test('falls back for in-chain secondary model when runtimeOverride=false', async () => {
+  test('other agents chains are unaffected by disableChain', async () => {
     const { client, mocks } = createMockClient();
-    const mgr = new ForegroundFallbackManager(
-      client,
-      makeChains(),
-      true,
-      3,
-      undefined,
-      false, // runtimeOverride
-    );
+    const mgr = new ForegroundFallbackManager(client, makeChains(), true);
 
-    // Simulate session using chain[1] — still in chain
+    mgr.disableChain('orchestrator');
+
+    // Explorer session — should still fall back normally
     await mgr.handleEvent({
       type: 'message.updated',
       properties: {
         info: {
-          sessionID: 'sess-4',
-          agent: 'orchestrator',
+          sessionID: 'sess-other',
+          agent: 'explorer',
           providerID: 'openai',
-          modelID: 'gpt-4o',
-          error: { message: 'rate limit exceeded' },
+          modelID: 'gpt-4o-mini',
+          error: { message: 'quota exceeded' },
         },
       },
     });
 
-    // Model IS in chain → should fall back
     expect(mocks.promptAsync).toHaveBeenCalledTimes(1);
     const call = mocks.promptAsync.mock.calls[0] as [
       { body: { model: { providerID: string; modelID: string } } },
     ];
-    // Falls back to chain[0] = anthropic/claude-opus-4-5 (chain[1] is tried)
+    // explorer chain: ['openai/gpt-4o-mini', 'anthropic/claude-haiku']
+    // current = gpt-4o-mini is tried → next = claude-haiku
     expect(call[0].body.model.providerID).toBe('anthropic');
-    expect(call[0].body.model.modelID).toBe('claude-opus-4-5');
-  });
-
-  test('falls back for unknown agent with in-chain model when runtimeOverride=false', async () => {
-    const { client, mocks } = createMockClient();
-    const mgr = new ForegroundFallbackManager(
-      client,
-      makeChains(),
-      true,
-      3,
-      undefined,
-      false, // runtimeOverride
-    );
-
-    // Simulate an agent name OpenCode doesn't report (agent field absent).
-    // resolveChain falls through to model-matching, finds the chain that
-    // contains openai/gpt-4o (orchestrator's chain).
-    await mgr.handleEvent({
-      type: 'message.updated',
-      properties: {
-        info: {
-          sessionID: 'sess-5',
-          providerID: 'openai',
-          modelID: 'gpt-4o',
-          error: { message: 'rate limit exceeded' },
-        },
-      },
-    });
-
-    // Model IS in chain (resolved via model matching) → should fall back
-    expect(mocks.promptAsync).toHaveBeenCalledTimes(1);
-  });
-
-  test('session.error with runtimeOverride=false and out-of-chain model aborts session', async () => {
-    const { client, mocks } = createMockClient();
-    const mgr = new ForegroundFallbackManager(
-      client,
-      makeChains(),
-      true,
-      3,
-      undefined,
-      false, // runtimeOverride
-    );
-
-    // Seed session with out-of-chain model
-    await mgr.handleEvent({
-      type: 'message.updated',
-      properties: {
-        info: {
-          sessionID: 'sess-err-override',
-          agent: 'orchestrator',
-          providerID: 'custom',
-          modelID: 'expensive-model',
-        },
-      },
-    });
-
-    // Trigger session.error with rate limit
-    await mgr.handleEvent({
-      type: 'session.error',
-      properties: {
-        sessionID: 'sess-err-override',
-        error: { message: 'Rate limit exceeded' },
-      },
-    });
-
-    expect(mocks.promptAsync).toHaveBeenCalledTimes(0);
-    expect(mocks.abort).toHaveBeenCalledTimes(1);
-  });
-
-  test('session.status with runtimeOverride=false aborts an out-of-chain model after retry exhaustion', async () => {
-    const { client, mocks } = createMockClient();
-    const mgr = new ForegroundFallbackManager(
-      client,
-      makeChains(),
-      true,
-      1, // maxRetries
-      undefined,
-      false, // runtimeOverride
-    );
-
-    // Seed session with out-of-chain model
-    await mgr.handleEvent({
-      type: 'message.updated',
-      properties: {
-        info: {
-          sessionID: 'sess-status-override',
-          agent: 'orchestrator',
-          providerID: 'custom',
-          modelID: 'expensive-model',
-        },
-      },
-    });
-
-    // The first failover retry exhausts this one-attempt budget.
-    await mgr.handleEvent({
-      type: 'session.status',
-      properties: {
-        sessionID: 'sess-status-override',
-        status: { type: 'retry', message: 'rate limit, retrying...' },
-      },
-    });
-    expect(mocks.promptAsync).toHaveBeenCalledTimes(0);
-    expect(mocks.abort).toHaveBeenCalled();
+    expect(call[0].body.model.modelID).toBe('claude-haiku');
   });
 });
