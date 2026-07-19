@@ -137,7 +137,7 @@ Presets can also be switched at runtime without restarting using the `/preset` c
 | `disabled_agents` | string[] | `["observer"]` | Agent names to disable globally. Set to `[]` to enable Observer; this is global, not per-preset |
 | `image_routing` | `"auto"` \| `"direct"` | omitted (legacy conditional) | Optional. When omitted, images are intercepted only when Observer is enabled, preserving existing behavior. Explicit `"auto"` requires Observer enabled and saves image attachments to disk before nudging delegation to @observer. `"direct"`: always pass images to the orchestrator. |
 | `autoUpdate` | boolean | `true` | Automatically install plugin updates in the background; set to `false` for notification-only mode |
-| `multiplexer.type` | string | `"none"` | Multiplexer mode: `auto`, `tmux`, `zellij`, `herdr`, `cmux`, or `none` |
+| `multiplexer.type` | string | `"none"` | Multiplexer mode: `auto`, `tmux`, `zellij`, `herdr`, `cmux`, `kitty`, or `none` |
 | `multiplexer.layout` | string | `"main-vertical"` | Layout preset: `main-vertical`, `main-horizontal`, `tiled`, `even-horizontal`, `even-vertical`. Tmux applies full layouts; Zellij and Herdr map supported layouts to split directions; cmux maintains a right-hand agent column |
 | `multiplexer.main_pane_size` | number | `60` | Main pane size as percentage (20–80) for tmux main layouts; ignored by Zellij, Herdr, and cmux |
 | `multiplexer.zellij_pane_mode` | string | `"agent-tab"` | Zellij pane placement: `agent-tab` creates/reuses a dedicated `opencode-agents` tab; `current-tab` opens subagents as panes in the tab containing the parent OpenCode pane, falling back to the focused tab if the parent pane cannot be resolved |
@@ -159,9 +159,7 @@ Presets can also be switched at runtime without restarting using the `/preset` c
 | `council.presets.<name>.<councillor>.variant` | string | - | Councillor variant |
 | `council.presets.<name>.<councillor>.prompt` | string | - | Optional role guidance for the councillor |
 | `council.default_preset` | string | `"default"` | Default preset when none is specified |
-| `council.timeout` | number | `180000` | Per-councillor timeout (ms) |
-| `council.councillor_execution_mode` | string | `"parallel"` | Run councillors in `parallel` or `serial`; use `serial` for single-model setups |
-| `council.councillor_retries` | number | `3` | Max retries per councillor on empty provider response (0–5) |
+| — | — | — | *Timeouts, execution mode, and retries are now handled by the orchestrator's council-mode prompt instructions; see `src/agents/council.ts`.* |
 | `interview.maxQuestions` | integer | `2` | Max questions per interview round (1–10) |
 | `interview.outputFolder` | string | `"interview"` | Directory where interview markdown files are written (relative to project root) |
 | `interview.autoOpenBrowser` | boolean | `true` | Automatically open the interview UI in your default browser during interactive runs; suppressed in tests and CI |
@@ -229,8 +227,8 @@ subprocess.
   `presets.<name>.council.model`.
 - The **councillor models** are configured separately under
   `council.presets.<name>.<councillor>.model`.
-- Deprecated `council.master*` fields are legacy compatibility aliases only;
-  do not use them in new configs.
+- `council.master*` fields have been removed. A deprecation warning is
+  logged this release if a config still contains them.
 
 ### Manual Update Mode
 

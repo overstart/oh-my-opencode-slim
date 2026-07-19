@@ -5,9 +5,9 @@ import { createReadOnlyAgentPermission } from './permissions';
 /**
  * Councillor agent - a read-only advisor in the multi-LLM council.
  *
- * Councillors are spawned by CouncilManager as agent sessions (visible in
- * tmux/UI). They have read-only access to the codebase via tools but CANNOT
- * modify files, run shell commands, or spawn subagents.
+ * Councillors are dispatched by the orchestrator via task() as agent sessions
+ * (visible in tmux/UI). They have read-only access to the codebase via tools
+ * but CANNOT modify files, run shell commands, or spawn subagents.
  *
  * Permission model mirrors OpenCode's built-in `explore` agent:
  * deny all, then selectively allow read-only tools.
@@ -54,6 +54,7 @@ export function createCouncillorAgent(
   model: string,
   customPrompt?: string,
   customAppendPrompt?: string,
+  variant?: string,
 ): AgentDefinition {
   const prompt = resolvePrompt(
     COUNCILLOR_PROMPT,
@@ -67,6 +68,7 @@ export function createCouncillorAgent(
       '只读 council 顾问。检查代码库并提供独立分析。由 council 系统内部派发。',
     config: {
       model,
+      variant,
       temperature: 0.2,
       prompt,
       // Strict read-only allowlist: deny all, then allow inspection tools only.

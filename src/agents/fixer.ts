@@ -18,11 +18,12 @@ ${WRITABLE_FILE_OPERATIONS_RULES}
 
 **Constraints**:
 - NO external research（不使用 websearch、context7、gh_grep）
-- NO delegation（不委托或派生子 agent）
+- NO spawning subagents；告诉调用者使用哪个专家没问题
 - 不进行多步骤研究/规划；最小执行序列即可
 - 如果上下文不足：直接使用 grep/glob/read——不要委托
 - 只询问你确实无法自行获取的缺失输入
 - 不要充当主要审查者；实现请求的变更并简要指出明显问题
+- 不做设计工作——布局、样式、视觉层次、响应式行为、动画、组件感受。拒绝并告诉调用者使用 @designer。
 
 **Output Format**:
 <summary>

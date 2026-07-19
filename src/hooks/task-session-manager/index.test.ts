@@ -6,6 +6,11 @@ import {
   SLIM_INTERNAL_INITIATOR_MARKER,
 } from '../../utils';
 import {
+  createPhaseReminderHook,
+  PHASE_REMINDER_METADATA_KEY,
+} from '../phase-reminder';
+import { createPostFileToolNudgeHook } from '../post-file-tool-nudge';
+import {
   BACKGROUND_JOB_BOARD_METADATA_KEY,
   createTaskSessionManagerHook,
 } from './index';
@@ -15,6 +20,16 @@ function flushIdleReconcileDelay() {
   return new Promise((resolve) => setTimeout(resolve, 2100));
 }
 
+async function flushContinuation(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+/** Flush delayed child idle-reconcile timers when idleReconcileDelayMs is 0. */
+async function flushChildIdleReconcile(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 5));
+}
+
 function createHook(options?: {
   shouldManageSession?: (sessionID: string) => boolean;
   registerSessionAsOrchestrator?: (sessionID: string) => void;
@@ -22,6 +37,8 @@ function createHook(options?: {
   readContextMaxFiles?: number;
   backgroundJobBoard?: BackgroundJobBoard;
   sessionStatus?: unknown;
+  sessionClient?: Record<string, unknown>;
+  idleReconcileDelayMs?: number;
   isFallbackInProgress?: (sessionID: string) => boolean;
   coordinator?: SessionLifecycle;
 }) {
@@ -30,6 +47,7 @@ function createHook(options?: {
       client: {
         session: {
           status: mock(async () => ({ data: options?.sessionStatus ?? {} })),
+          ...options?.sessionClient,
         },
       },
       directory: '/tmp',
@@ -44,6 +62,7 @@ function createHook(options?: {
       registerSessionAsOrchestrator: options?.registerSessionAsOrchestrator,
       isFallbackInProgress: options?.isFallbackInProgress,
       coordinator: options?.coordinator,
+      idleReconcileDelayMs: options?.idleReconcileDelayMs,
     },
   );
 
@@ -59,6 +78,29 @@ function createMessages(sessionID: string, text = 'user message') {
       },
     ],
   };
+}
+
+function boardText(messages: { messages: unknown[] }): string | undefined {
+  const last = messages.messages.at(-1) as
+    | {
+        parts?: {
+          text?: string;
+          metadata?: Record<string, unknown>;
+        }[];
+      }
+    | undefined;
+  const part = last?.parts?.[0];
+  return part?.metadata?.[BACKGROUND_JOB_BOARD_METADATA_KEY] === true
+    ? part.text
+    : undefined;
+}
+
+async function transformMessages(
+  hook: ReturnType<typeof createTaskSessionManagerHook>,
+  messages: { messages: unknown[] },
+) {
+  await hook['experimental.chat.messages.transform']({}, messages as never);
+  await hook.injectBackgroundJobBoard({}, messages as never);
 }
 
 function setupCompletedJob(
@@ -104,13 +146,11 @@ describe('task-session-manager hook', () => {
       ],
     };
 
-    await hook['experimental.chat.messages.transform']({}, messages as never);
+    await transformMessages(hook, messages as never);
 
-    expect(messages.messages).toHaveLength(5);
-    expect(messages.messages[4].parts[0].text).toContain(
-      '### Background Job Board',
-    );
-    expect(messages.messages[4].parts[0].text).toContain(
+    expect(messages.messages).toHaveLength(6);
+    expect(boardText(messages)).toContain('### Background Job Board');
+    expect(boardText(messages)).toContain(
       'exp-1 / child-1 / explorer / running',
     );
   });
@@ -153,10 +193,19 @@ describe('task-session-manager hook', () => {
     );
 
     const messages = createMessages('parent-1', 'do something');
-    await hook['experimental.chat.messages.transform']({}, messages);
+    await hook.injectBackgroundJobBoard({}, messages);
 
     const userMessage = messages.messages[0];
-    const boardPart = userMessage.parts[0] as {
+    expect(userMessage.parts).toHaveLength(1);
+    expect(userMessage.parts[0].text).toBe('do something');
+    const boardMessage = messages.messages.at(-1) as {
+      info: { role?: string; sessionID?: string };
+      parts: { text?: string; synthetic?: boolean }[];
+    };
+    expect(messages.messages).toHaveLength(2);
+    expect(boardMessage.info.role).toBe('user');
+    expect(boardMessage.info.sessionID).toBe('parent-1');
+    const boardPart = boardMessage.parts[0] as {
       text?: string;
       synthetic?: boolean;
     };
@@ -169,7 +218,6 @@ describe('task-session-manager hook', () => {
     expect(boardPart.text).toEndWith('</system-reminder>');
     expect(boardPart.text).toContain('exp-1 / child-1 / explorer / running');
     expect(boardPart.text).toContain('Objective: map scheduler hooks');
-    expect(userMessage.parts[1].text).toBe('do something');
   });
 
   test('does not let user-visible sentinel text suppress board injection', async () => {
@@ -196,16 +244,13 @@ describe('task-session-manager hook', () => {
       ],
     };
 
-    await hook['experimental.chat.messages.transform']({}, messages);
+    await hook.injectBackgroundJobBoard({}, messages);
 
-    expect(messages.messages[0].parts[0]).toMatchObject({
-      type: 'text',
-      synthetic: true,
-    });
-    expect(messages.messages[0].parts[0].text).toContain(
+    expect(boardText(messages)).toContain(
       'exp-1 / child-1 / explorer / running',
     );
-    expect(messages.messages[0].parts[1].text).toBe(
+    expect(messages.messages[0].parts).toHaveLength(1);
+    expect(messages.messages[0].parts[0].text).toBe(
       'SENTINEL: background-job-board-v2',
     );
   });
@@ -221,17 +266,158 @@ describe('task-session-manager hook', () => {
     const { hook } = createHook({ backgroundJobBoard: board });
     const messages = createMessages('parent-1', 'continue');
 
-    await hook['experimental.chat.messages.transform']({}, messages);
-    messages.messages[0].parts = JSON.parse(
-      JSON.stringify(messages.messages[0].parts),
-    );
-    await hook['experimental.chat.messages.transform']({}, messages);
+    await hook.injectBackgroundJobBoard({}, messages);
+    messages.messages = JSON.parse(JSON.stringify(messages.messages));
+    await hook.injectBackgroundJobBoard({}, messages);
 
-    expect(
-      messages.messages[0].parts.filter((part) =>
+    const boardMessages = messages.messages.filter((message) =>
+      message.parts.some((part) =>
         part.text?.includes('### Background Job Board'),
       ),
-    ).toHaveLength(1);
+    );
+    expect(boardMessages).toHaveLength(1);
+    expect(messages.messages.at(-1)).toBe(boardMessages[0]);
+  });
+
+  test('strips stale board parts from history before injecting the latest state', async () => {
+    const board = new BackgroundJobBoard();
+    board.registerLaunch({
+      taskID: 'child-1',
+      parentSessionID: 'parent-1',
+      agent: 'explorer',
+      description: 'map hooks',
+    });
+    const { hook } = createHook({ backgroundJobBoard: board });
+    const messages = createMessages('parent-1', 'first turn');
+
+    await hook.injectBackgroundJobBoard({}, messages);
+    messages.messages.push({
+      info: { role: 'user', agent: 'orchestrator', sessionID: 'parent-1' },
+      parts: [{ type: 'text', text: 'second turn' }],
+    });
+    board.updateStatus({
+      taskID: 'child-1',
+      state: 'completed',
+      resultSummary: 'finished mapping',
+    });
+
+    await hook.injectBackgroundJobBoard({}, messages);
+
+    const boardParts = messages.messages.flatMap((message) =>
+      message.parts.filter(
+        (part) => part.metadata?.[BACKGROUND_JOB_BOARD_METADATA_KEY] === true,
+      ),
+    );
+    expect(boardParts).toHaveLength(1);
+    expect(boardParts[0].text).toContain('completed, unreconciled');
+    expect(messages.messages[0].parts).toHaveLength(1);
+    expect(messages.messages.at(-1)?.parts[0]).toBe(boardParts[0]);
+    expect(messages.messages.at(-2)?.parts[0].text).toBe('second turn');
+  });
+
+  test('strips JSON-persisted board parts from earlier messages', async () => {
+    const board = new BackgroundJobBoard();
+    board.registerLaunch({
+      taskID: 'child-1',
+      parentSessionID: 'parent-1',
+      agent: 'explorer',
+      description: 'map hooks',
+    });
+    const { hook } = createHook({ backgroundJobBoard: board });
+    const messages = createMessages('parent-1', 'earlier turn');
+
+    await hook.injectBackgroundJobBoard({}, messages);
+    const persistedBoard = JSON.parse(
+      JSON.stringify(messages.messages.at(-1)?.parts[0]),
+    );
+    messages.messages = [
+      {
+        info: { role: 'assistant' },
+        parts: [persistedBoard],
+      },
+      {
+        info: { role: 'user', agent: 'orchestrator', sessionID: 'parent-1' },
+        parts: [{ type: 'text', text: 'current turn' }],
+      },
+    ];
+
+    await hook.injectBackgroundJobBoard({}, messages);
+
+    expect(messages.messages).toHaveLength(2);
+    expect(messages.messages[0].parts[0].text).toBe('current turn');
+    expect(messages.messages[1].parts[0].metadata).toEqual({
+      [BACKGROUND_JOB_BOARD_METADATA_KEY]: true,
+    });
+  });
+
+  test('strips existing board parts when no jobs produce a prompt', async () => {
+    const { hook } = createHook({
+      backgroundJobBoard: new BackgroundJobBoard(),
+    });
+    const staleBoard = {
+      type: 'text',
+      synthetic: true,
+      text: '<system-reminder>stale</system-reminder>',
+      metadata: { [BACKGROUND_JOB_BOARD_METADATA_KEY]: true },
+    };
+    const messages = {
+      messages: [
+        { info: { role: 'assistant' }, parts: [staleBoard] },
+        {
+          info: { role: 'user', agent: 'orchestrator', sessionID: 'parent-1' },
+          parts: [{ type: 'text', text: 'current turn' }, staleBoard],
+        },
+      ],
+    };
+
+    await hook.injectBackgroundJobBoard({}, messages);
+
+    expect(messages.messages).toHaveLength(1);
+    expect(messages.messages[0].parts).toEqual([
+      { type: 'text', text: 'current turn' },
+    ]);
+  });
+
+  test('appends one board after a phase reminder on repeated transforms', async () => {
+    const board = new BackgroundJobBoard();
+    board.registerLaunch({
+      taskID: 'child-1',
+      parentSessionID: 'parent-1',
+      agent: 'explorer',
+      description: 'map hooks',
+    });
+    const { hook } = createHook({ backgroundJobBoard: board });
+    const phaseReminder = createPhaseReminderHook({
+      shouldInject: () => true,
+    });
+    const messages = createMessages('parent-1', 'current turn');
+
+    await phaseReminder['experimental.chat.messages.transform']({}, messages);
+    await hook.injectBackgroundJobBoard({}, messages);
+
+    // Next request: opencode rebuilds the array from storage. Transient
+    // board messages are gone, but parts pushed onto shared message
+    // objects (phase reminder) may linger.
+    const nextRequest = { messages: [messages.messages[0]] };
+    await phaseReminder['experimental.chat.messages.transform'](
+      {},
+      nextRequest,
+    );
+    await hook.injectBackgroundJobBoard({}, nextRequest);
+
+    const parts = nextRequest.messages[0].parts;
+    expect(
+      parts.filter(
+        (part) => part.metadata?.[BACKGROUND_JOB_BOARD_METADATA_KEY] === true,
+      ),
+    ).toHaveLength(0);
+    expect(parts.at(-1)?.metadata).toEqual({
+      [PHASE_REMINDER_METADATA_KEY]: true,
+    });
+    expect(nextRequest.messages).toHaveLength(2);
+    expect(nextRequest.messages.at(-1)?.parts[0].metadata).toEqual({
+      [BACKGROUND_JOB_BOARD_METADATA_KEY]: true,
+    });
   });
 
   test('does not let user-visible internal marker suppress board injection', async () => {
@@ -258,16 +444,13 @@ describe('task-session-manager hook', () => {
       ],
     };
 
-    await hook['experimental.chat.messages.transform']({}, messages);
+    await hook.injectBackgroundJobBoard({}, messages);
 
-    expect(messages.messages[0].parts[0]).toMatchObject({
-      type: 'text',
-      synthetic: true,
-    });
-    expect(messages.messages[0].parts[0].text).toContain(
+    expect(boardText(messages)).toContain(
       'exp-1 / child-1 / explorer / running',
     );
-    expect(messages.messages[0].parts[1].text).toBe(
+    expect(messages.messages[0].parts).toHaveLength(1);
+    expect(messages.messages[0].parts[0].text).toBe(
       SLIM_INTERNAL_INITIATOR_MARKER,
     );
   });
@@ -297,7 +480,7 @@ describe('task-session-manager hook', () => {
       ],
     };
 
-    await hook['experimental.chat.messages.transform']({}, messages);
+    await transformMessages(hook, messages);
 
     expect(messages.messages[0].parts).toHaveLength(1);
     expect(
@@ -354,14 +537,12 @@ describe('task-session-manager hook', () => {
     });
 
     const messages = createMessages('parent-1', 'continue');
-    await hook['experimental.chat.messages.transform']({}, messages);
+    await transformMessages(hook, messages);
 
-    expect(messages.messages[0].parts[0].text).toContain(
+    expect(boardText(messages)).toContain(
       'ora-1 / child-1 / oracle / completed, unreconciled',
     );
-    expect(messages.messages[0].parts[0].text).toContain(
-      'Result: plan is sound',
-    );
+    expect(boardText(messages)).toContain('Result: plan is sound');
   });
 
   test('keeps task timeout as a running timed-out job', async () => {
@@ -414,9 +595,9 @@ describe('task-session-manager hook', () => {
     });
 
     const messages = createMessages('parent-1', 'continue');
-    await hook['experimental.chat.messages.transform']({}, messages);
+    await transformMessages(hook, messages);
 
-    expect(messages.messages[0].parts[0].text).toContain(
+    expect(boardText(messages)).toContain(
       'fix-1 / child-1 / fixer / running, timed out',
     );
   });
@@ -568,10 +749,8 @@ describe('task-session-manager hook', () => {
     );
 
     const beforeMessages = createMessages('parent-1', 'before busy');
-    await hook['experimental.chat.messages.transform']({}, beforeMessages);
-    expect(beforeMessages.messages[0].parts[0].text).toContain(
-      'running, timed out',
-    );
+    await transformMessages(hook, beforeMessages);
+    expect(boardText(beforeMessages)).toContain('running, timed out');
 
     await hook.event({
       event: {
@@ -591,7 +770,7 @@ describe('task-session-manager hook', () => {
     });
 
     const afterMessages = createMessages('parent-1', 'after busy');
-    await hook['experimental.chat.messages.transform']({}, afterMessages);
+    await transformMessages(hook, afterMessages);
     expect(afterMessages.messages[0].parts[0].text).not.toContain(
       'running, timed out',
     );
@@ -640,14 +819,14 @@ describe('task-session-manager hook', () => {
       ],
     };
 
-    await hook['experimental.chat.messages.transform']({}, messages);
+    await transformMessages(hook, messages);
 
     expect(board.get('child-1')).toMatchObject({
       state: 'completed',
       terminalUnreconciled: true,
       resultSummary: 'found hook flow',
     });
-    expect(messages.messages[0].parts[0].text).toContain(
+    expect(boardText(messages)).toContain(
       'exp-1 / child-1 / explorer / completed, unreconciled',
     );
   });
@@ -675,7 +854,7 @@ describe('task-session-manager hook', () => {
       ].join('\n'),
     );
 
-    await hook['experimental.chat.messages.transform']({}, messages);
+    await transformMessages(hook, messages);
 
     expect(board.get('child-1')).toMatchObject({
       state: 'running',
@@ -718,7 +897,7 @@ describe('task-session-manager hook', () => {
       ],
     };
 
-    await hook['experimental.chat.messages.transform']({}, messages);
+    await transformMessages(hook, messages);
     expect(board.get('child-1')).toMatchObject({
       state: 'completed',
       terminalUnreconciled: true,
@@ -732,7 +911,7 @@ describe('task-session-manager hook', () => {
       description: 'map hooks again',
     });
 
-    await hook['experimental.chat.messages.transform']({}, messages);
+    await transformMessages(hook, messages);
 
     expect(board.get('child-1')).toMatchObject({
       state: 'running',
@@ -781,7 +960,7 @@ describe('task-session-manager hook', () => {
       ],
     };
 
-    await hook['experimental.chat.messages.transform']({}, firstMessages);
+    await transformMessages(hook, firstMessages);
     expect(board.get('child-1')).toMatchObject({
       state: 'completed',
       terminalUnreconciled: true,
@@ -830,7 +1009,7 @@ describe('task-session-manager hook', () => {
       ],
     };
 
-    await hook['experimental.chat.messages.transform']({}, secondMessages);
+    await transformMessages(hook, secondMessages);
 
     // Should be terminal again because this is a new message occurrence
     expect(board.get('child-1')).toMatchObject({
@@ -875,7 +1054,7 @@ describe('task-session-manager hook', () => {
       ],
     };
 
-    await hook['experimental.chat.messages.transform']({}, firstMessages);
+    await transformMessages(hook, firstMessages);
 
     expect(board.get('child-1')).toMatchObject({
       state: 'completed',
@@ -915,7 +1094,7 @@ describe('task-session-manager hook', () => {
       ],
     };
 
-    await hook['experimental.chat.messages.transform']({}, secondMessages);
+    await transformMessages(hook, secondMessages);
 
     // Should still be running because the same anonymous completion was deduped
     // (not re-processed just because message index changed)
@@ -960,7 +1139,7 @@ describe('task-session-manager hook', () => {
       ],
     };
 
-    await hook['experimental.chat.messages.transform']({}, messages);
+    await transformMessages(hook, messages);
 
     expect(board.get('child-1')).toMatchObject({
       state: 'running',
@@ -1002,7 +1181,7 @@ describe('task-session-manager hook', () => {
       ],
     };
 
-    await hook['experimental.chat.messages.transform']({}, messages);
+    await transformMessages(hook, messages);
 
     expect(board.get('child-1')).toMatchObject({
       state: 'running',
@@ -1044,7 +1223,7 @@ describe('task-session-manager hook', () => {
       ],
     };
 
-    await hook['experimental.chat.messages.transform']({}, messages);
+    await transformMessages(hook, messages);
 
     expect(board.get('child-1')).toMatchObject({
       state: 'running',
@@ -1086,7 +1265,7 @@ describe('task-session-manager hook', () => {
       ],
     };
 
-    await hook['experimental.chat.messages.transform']({}, messages);
+    await transformMessages(hook, messages);
 
     expect(board.get('child-1')).toMatchObject({
       state: 'running',
@@ -1127,7 +1306,7 @@ describe('task-session-manager hook', () => {
       ],
     };
 
-    await hook['experimental.chat.messages.transform']({}, messages);
+    await transformMessages(hook, messages);
 
     expect(board.get('child-1')).toMatchObject({
       state: 'completed',
@@ -1169,7 +1348,7 @@ describe('task-session-manager hook', () => {
       ],
     };
 
-    await hook['experimental.chat.messages.transform']({}, messages);
+    await transformMessages(hook, messages);
 
     expect(board.get('child-1')).toMatchObject({
       state: 'error',
@@ -1213,10 +1392,12 @@ describe('task-session-manager hook', () => {
       ],
     };
 
-    await hook['experimental.chat.messages.transform']({}, messages);
+    await transformMessages(hook, messages);
 
-    expect(messages.messages[0].parts[0].text).toContain('state: cancelled');
-    expect(messages.messages[0].parts[0].text).toContain(
+    expect(messages.messages[0].parts.at(-1)?.text).toContain(
+      'state: cancelled',
+    );
+    expect(messages.messages[0].parts.at(-1)?.text).toContain(
       'cancelled: user requested',
     );
     expect(messages.messages[0].parts[0].text).not.toContain(
@@ -1291,8 +1472,8 @@ describe('task-session-manager hook', () => {
     });
 
     const messages = createMessages('parent-1', 'continue');
-    await hook['experimental.chat.messages.transform']({}, messages);
-    expect(messages.messages[0].parts[0].text).toContain(
+    await transformMessages(hook, messages);
+    expect(boardText(messages)).toContain(
       'ora-1 / child-1 / oracle / completed, unreconciled',
     );
 
@@ -1312,10 +1493,8 @@ describe('task-session-manager hook', () => {
     });
 
     const nextMessages = createMessages('parent-1', 'continue again');
-    await hook['experimental.chat.messages.transform']({}, nextMessages);
-    expect(nextMessages.messages[0].parts[0].text).toContain(
-      'Reusable Sessions',
-    );
+    await transformMessages(hook, nextMessages);
+    expect(boardText(nextMessages)).toContain('Reusable Sessions');
   });
 
   test('does not reopen stale cancelled child job when child session becomes busy', async () => {
@@ -1352,7 +1531,7 @@ describe('task-session-manager hook', () => {
     setupCompletedJob(board);
 
     const messages = createMessages('parent-1', 'continue');
-    await hook['experimental.chat.messages.transform']({}, messages);
+    await transformMessages(hook, messages);
 
     // Fire idle event (starts 2s reconciliation timer)
     await hook.event({
@@ -1417,7 +1596,7 @@ describe('task-session-manager hook', () => {
     board.updateStatus({ taskID: 'child-1', state: 'completed' });
 
     const messages = createMessages('parent-1', 'continue');
-    await hook['experimental.chat.messages.transform']({}, messages);
+    await transformMessages(hook, messages);
 
     await hook.event({
       event: {
@@ -1454,7 +1633,7 @@ describe('task-session-manager hook', () => {
     board.updateStatus({ taskID: 'child-1', state: 'completed' });
 
     const messages = createMessages('parent-1', 'continue');
-    await hook['experimental.chat.messages.transform']({}, messages);
+    await transformMessages(hook, messages);
 
     await hook.event({
       event: {
@@ -1480,6 +1659,142 @@ describe('task-session-manager hook', () => {
     });
   });
 
+  test('non-retryable session.error marks running job as error on board', async () => {
+    const board = new BackgroundJobBoard();
+    const { hook } = createHook({ backgroundJobBoard: board });
+
+    board.registerLaunch({
+      taskID: 'child-1',
+      parentSessionID: 'parent-1',
+      agent: 'oracle',
+      description: 'review plan',
+    });
+    board.updateStatus({ taskID: 'child-1', state: 'running' });
+
+    await hook.event({
+      event: {
+        type: 'session.error',
+        properties: {
+          sessionID: 'child-1',
+          error: {
+            name: 'UnknownError',
+            message: 'LLM proxy connection refused',
+          },
+        },
+      },
+    });
+
+    const job = board.get('child-1');
+    expect(job?.state).toBe('error');
+    expect(job?.resultSummary).toBe('LLM proxy connection refused');
+  });
+
+  test('session.idle does not overwrite error state with completed', async () => {
+    const board = new BackgroundJobBoard();
+    const { hook } = createHook({ backgroundJobBoard: board });
+
+    board.registerLaunch({
+      taskID: 'child-1',
+      parentSessionID: 'parent-1',
+      agent: 'oracle',
+      description: 'review plan',
+    });
+    board.updateStatus({
+      taskID: 'child-1',
+      state: 'error',
+      resultSummary: 'connection refused',
+    });
+
+    const messages = createMessages('parent-1', 'continue');
+    await hook['experimental.chat.messages.transform']({}, messages);
+
+    await hook.event({
+      event: {
+        type: 'session.idle',
+        properties: {
+          info: { id: 'child-1', parentID: 'parent-1' },
+        },
+      },
+    });
+
+    const job = board.get('child-1');
+    expect(job?.state).toBe('error');
+    expect(job?.resultSummary).toBe('connection refused');
+  });
+
+  test('child session.error (non-orchestrator) records failure on board', async () => {
+    const board = new BackgroundJobBoard();
+    // Child subagent sessions are not orchestrators, so shouldManageSession
+    // returns false for them. The error must still land on the board,
+    // otherwise idle reconciliation marks the job completed (false success).
+    const { hook } = createHook({
+      backgroundJobBoard: board,
+      shouldManageSession: () => false,
+    });
+
+    board.registerLaunch({
+      taskID: 'child-1',
+      parentSessionID: 'parent-1',
+      agent: 'designer',
+      description: 'design ui',
+    });
+    board.updateStatus({ taskID: 'child-1', state: 'running' });
+
+    await hook.event({
+      event: {
+        type: 'session.error',
+        properties: {
+          sessionID: 'child-1',
+          error: {
+            name: 'AI_APICallError',
+            message: 'Internal server error',
+          },
+        },
+      },
+    });
+
+    const job = board.get('child-1');
+    expect(job?.state).toBe('error');
+    expect(job?.resultSummary).toBe('Internal server error');
+  });
+
+  test('child session.error during fallback is not recorded on board', async () => {
+    const board = new BackgroundJobBoard();
+    // isFallbackInProgress is currently always-false for real children
+    // (they have no fallback chain), so this guard path is unreachable in
+    // production today. The test pins the defensive behavior for the day
+    // children gain a fallback chain.
+    const { hook } = createHook({
+      backgroundJobBoard: board,
+      shouldManageSession: () => false,
+      isFallbackInProgress: () => true,
+    });
+
+    board.registerLaunch({
+      taskID: 'child-1',
+      parentSessionID: 'parent-1',
+      agent: 'designer',
+      description: 'design ui',
+    });
+    board.updateStatus({ taskID: 'child-1', state: 'running' });
+
+    await hook.event({
+      event: {
+        type: 'session.error',
+        properties: {
+          sessionID: 'child-1',
+          error: {
+            name: 'AI_APICallError',
+            message: 'Internal server error',
+          },
+        },
+      },
+    });
+
+    const job = board.get('child-1');
+    expect(job?.state).toBe('running');
+  });
+
   test('completed reconciled job appears reusable and resumes via task', async () => {
     const board = new BackgroundJobBoard();
     const { hook } = createHook({ backgroundJobBoard: board });
@@ -1497,7 +1812,7 @@ describe('task-session-manager hook', () => {
     });
 
     const messages = createMessages('parent-1', 'continue');
-    await hook['experimental.chat.messages.transform']({}, messages);
+    await transformMessages(hook, messages);
     await hook.event({
       event: {
         type: 'session.status',
@@ -1509,11 +1824,9 @@ describe('task-session-manager hook', () => {
     await flushIdleReconcileDelay();
 
     const nextMessages = createMessages('parent-1', 'reuse');
-    await hook['experimental.chat.messages.transform']({}, nextMessages);
-    expect(nextMessages.messages[0].parts[0].text).toContain(
-      '#### Reusable Sessions',
-    );
-    expect(nextMessages.messages[0].parts[0].text).toContain(
+    await transformMessages(hook, nextMessages);
+    expect(boardText(nextMessages)).toContain('#### Reusable Sessions');
+    expect(boardText(nextMessages)).toContain(
       'exp-1 / child-1 / explorer / completed, reconciled',
     );
     expect(nextMessages.messages[0].parts[0].text).not.toContain(
@@ -1583,8 +1896,8 @@ describe('task-session-manager hook', () => {
     expect(completed.args.task_id).toBe('done-1');
 
     const messages = createMessages('parent-1', 'continue');
-    await hook['experimental.chat.messages.transform']({}, messages);
-    expect(messages.messages[0].parts[0].text).toContain(
+    await transformMessages(hook, messages);
+    expect(boardText(messages)).toContain(
       'ora-1 / done-1 / oracle / completed, reconciled',
     );
     expect(messages.messages[0].parts[0].text).not.toContain('err-1');
@@ -1728,13 +2041,11 @@ describe('task-session-manager hook', () => {
     );
 
     const messages = createMessages('parent-1', 'continue');
-    await hook['experimental.chat.messages.transform']({}, messages);
-    expect(messages.messages[0].parts[0].text).toContain(
+    await transformMessages(hook, messages);
+    expect(boardText(messages)).toContain(
       'exp-1 / child-1 / explorer / running',
     );
-    expect(messages.messages[0].parts[0].text).toContain(
-      '#### Reusable Sessions\n- none',
-    );
+    expect(boardText(messages)).toContain('#### Reusable Sessions\n- none');
   });
 
   test('bare task id output without state does not create reusable job', async () => {
@@ -1749,7 +2060,7 @@ describe('task-session-manager hook', () => {
     );
 
     const messages = createMessages('parent-1', 'continue');
-    await hook['experimental.chat.messages.transform']({}, messages);
+    await transformMessages(hook, messages);
     expect(messages.messages[0].parts[0].text).toBe('continue');
   });
 
@@ -1773,8 +2084,8 @@ describe('task-session-manager hook', () => {
     );
 
     const unreconciled = createMessages('parent-1', 'continue');
-    await hook['experimental.chat.messages.transform']({}, unreconciled);
-    expect(unreconciled.messages[0].parts[0].text).toContain(
+    await transformMessages(hook, unreconciled);
+    expect(boardText(unreconciled)).toContain(
       'fix-1 / ses_child / fixer / completed, unreconciled',
     );
 
@@ -1789,8 +2100,8 @@ describe('task-session-manager hook', () => {
     await flushIdleReconcileDelay();
 
     const reusable = createMessages('parent-1', 'reuse');
-    await hook['experimental.chat.messages.transform']({}, reusable);
-    expect(reusable.messages[0].parts[0].text).toContain(
+    await transformMessages(hook, reusable);
+    expect(boardText(reusable)).toContain(
       'fix-1 / ses_child / fixer / completed, reconciled',
     );
 
@@ -1911,7 +2222,7 @@ describe('task-session-manager hook', () => {
       { output: ['task_id: child-1', 'state: completed'].join('\n') },
     );
     const messages = createMessages('parent-1', 'continue');
-    await hook['experimental.chat.messages.transform']({}, messages);
+    await transformMessages(hook, messages);
     await hook.event({
       event: {
         type: 'session.status',
@@ -1923,8 +2234,8 @@ describe('task-session-manager hook', () => {
     await flushIdleReconcileDelay();
 
     const next = createMessages('parent-1', 'reuse');
-    await hook['experimental.chat.messages.transform']({}, next);
-    const prompt = next.messages[0].parts[0].text;
+    await transformMessages(hook, next);
+    const prompt = boardText(next);
     expect(prompt).not.toContain('small.ts');
     expect(prompt).toContain('src/large.ts (12 lines)');
     expect(prompt).not.toContain('src/large.ts (18 lines)');
@@ -1996,7 +2307,7 @@ describe('task-session-manager hook', () => {
     );
 
     const messages = createMessages('manual-1', 'do something');
-    await hook['experimental.chat.messages.transform']({}, messages);
+    await transformMessages(hook, messages);
 
     // Message should remain unchanged
     expect(messages.messages[0].parts[0].text).toBe('do something');
@@ -2034,7 +2345,7 @@ describe('task-session-manager hook', () => {
     coordinator.dispatchSessionDeleted('child-1');
 
     const messages = createMessages('parent-1', 'do something');
-    await hook['experimental.chat.messages.transform']({}, messages);
+    await transformMessages(hook, messages);
     // Message should remain unchanged since session was deleted
     expect(messages.messages[0].parts[0].text).toBe('do something');
   });
@@ -2072,7 +2383,7 @@ describe('task-session-manager hook', () => {
     );
 
     const messages = createMessages('parent-1', 'do something');
-    await hook['experimental.chat.messages.transform']({}, messages);
+    await transformMessages(hook, messages);
 
     // Message should remain unchanged since session was deleted
     expect(messages.messages[0].parts[0].text).toBe('do something');
@@ -2091,11 +2402,13 @@ describe('task-session-manager hook', () => {
     const { hook } = createHook({
       backgroundJobBoard: board,
       shouldManageSession: (id) => id === 'parent-1',
+      idleReconcileDelayMs: 0,
     });
 
     await hook.event({
       event: { type: 'session.idle', properties: { sessionID: 'child-1' } },
     });
+    await flushChildIdleReconcile();
 
     expect(board.get('child-1')).toMatchObject({
       state: 'reconciled',
@@ -2140,11 +2453,13 @@ describe('task-session-manager hook', () => {
       backgroundJobBoard: board,
       shouldManageSession: (id) => id === 'parent-1',
       isFallbackInProgress: (id) => id === 'child-1',
+      idleReconcileDelayMs: 0,
     });
 
     await hook.event({
       event: { type: 'session.idle', properties: { sessionID: 'child-1' } },
     });
+    await flushChildIdleReconcile();
 
     // Job should still be running — not reconciled
     expect(board.get('child-1')).toMatchObject({ state: 'running' });
@@ -2215,11 +2530,13 @@ describe('task-session-manager hook', () => {
       shouldManageSession: (id) => id === 'parent-1',
       // isFallbackInProgress returns false for child-1
       isFallbackInProgress: () => false,
+      idleReconcileDelayMs: 0,
     });
 
     await hook.event({
       event: { type: 'session.idle', properties: { sessionID: 'child-1' } },
     });
+    await flushChildIdleReconcile();
 
     expect(board.get('child-1')).toMatchObject({
       state: 'reconciled',
@@ -2244,12 +2561,14 @@ describe('task-session-manager hook', () => {
       backgroundJobBoard: board,
       shouldManageSession: () => false,
       isFallbackInProgress: (id) => id === 'child-1',
+      idleReconcileDelayMs: 0,
     });
 
     // First idle (abort from fallback) — guarded, no reconciliation
     await hook.event({
       event: { type: 'session.idle', properties: { sessionID: 'child-1' } },
     });
+    await flushChildIdleReconcile();
     expect(board.get('child-1')).toMatchObject({ state: 'running' });
 
     // Busy signal (fallback re-prompt) — updates lastLiveBusyAt
@@ -2266,13 +2585,207 @@ describe('task-session-manager hook', () => {
       backgroundJobBoard: board,
       shouldManageSession: () => false,
       isFallbackInProgress: () => false,
+      idleReconcileDelayMs: 0,
     });
     await hook2.hook.event({
       event: { type: 'session.idle', properties: { sessionID: 'child-1' } },
     });
+    await flushChildIdleReconcile();
     expect(board.get('child-1')).toMatchObject({
       state: 'reconciled',
       terminalState: 'completed',
+    });
+  });
+
+  test('busy after idle cancels pending child idle-reconcile (FG race)', async () => {
+    // OpenCode can emit idle for a rate-limited child BEFORE FG sets
+    // isFallbackInProgress. Immediate reconcile would mark completed while
+    // FG re-prompts and the child keeps working. Delay + busy cancel keeps
+    // the job running (the observed council-b false-complete race).
+    const board = new BackgroundJobBoard();
+    board.registerLaunch({
+      taskID: 'child-b',
+      parentSessionID: 'parent-1',
+      agent: 'councillor-reviewer-b',
+      description: 'audit distributed',
+    });
+
+    const { hook } = createHook({
+      backgroundJobBoard: board,
+      shouldManageSession: () => false,
+      isFallbackInProgress: () => false,
+      idleReconcileDelayMs: 30,
+    });
+
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'child-b' } },
+    });
+    expect(board.get('child-b')).toMatchObject({ state: 'running' });
+
+    await hook.event({
+      event: {
+        type: 'session.status',
+        properties: { sessionID: 'child-b', status: { type: 'busy' } },
+      },
+    });
+
+    await new Promise((r) => setTimeout(r, 50));
+    expect(board.get('child-b')).toMatchObject({ state: 'running' });
+  });
+
+  test('session.deleted cancels pending child idle-reconcile (FG teardown race)', async () => {
+    // FG aborts the child session mid-idle-delay; onSessionDeleted must
+    // cancel the pending timer so it cannot fire after FG finishes and
+    // re-check isFallbackInProgress=false, falsely reconciling the board
+    // entry while the re-prompted session keeps working.
+    const coordinator = new SessionLifecycle(() => {});
+    const board = new BackgroundJobBoard();
+    board.registerLaunch({
+      taskID: 'child-b',
+      parentSessionID: 'parent-1',
+      agent: 'councillor-reviewer-b',
+      description: 'audit distributed',
+    });
+
+    let fgInProgress = false;
+    const { hook } = createHook({
+      backgroundJobBoard: board,
+      coordinator,
+      shouldManageSession: () => false,
+      isFallbackInProgress: () => fgInProgress,
+      idleReconcileDelayMs: 30,
+    });
+
+    // idle fires before FG sets isFallbackInProgress — schedules timer T.
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'child-b' } },
+    });
+    // FG claims the session and aborts it; OpenCode emits session.deleted
+    // while the timer is still pending. onSessionDeleted must cancel T.
+    fgInProgress = true;
+    coordinator.dispatchSessionDeleted('child-b');
+    // FG finishes; isFallbackInProgress goes false before T would fire.
+    fgInProgress = false;
+
+    await new Promise((r) => setTimeout(r, 60));
+    // Board entry survives (isFallbackInProgress was true at delete time)
+    // but is NOT reconciled — the timer was cancelled on session.deleted.
+    const job = board.get('child-b');
+    expect(job).toBeDefined();
+    expect(job?.state).toBe('running');
+  });
+
+  test('session.created early-registers board job so after-hook cancellation cannot orphan the child', async () => {
+    // Reproduces #765: parent tool may be cancelled before tool.execute.after,
+    // so the job never lands on the board. Early registration from
+    // session.created keeps runningJobForSession true and lets idle reconcile.
+    const board = new BackgroundJobBoard();
+    const { hook } = createHook({
+      backgroundJobBoard: board,
+      idleReconcileDelayMs: 0,
+    });
+
+    await hook['tool.execute.before'](
+      { tool: 'task', sessionID: 'parent-1', callID: 'call-1' },
+      {
+        args: {
+          subagent_type: 'oracle',
+          description: 'loss design review',
+        },
+      },
+    );
+
+    // Child session is created while the parent tool is still in flight.
+    await hook.event({
+      event: {
+        type: 'session.created',
+        properties: { info: { id: 'child-1', parentID: 'parent-1' } },
+      },
+    });
+
+    expect(board.get('child-1')).toMatchObject({
+      state: 'running',
+      agent: 'oracle',
+      parentSessionID: 'parent-1',
+      description: 'loss design review',
+    });
+
+    // Simulate parent tool never firing tool.execute.after (cancelled).
+    // Child goes idle after finishing — board must still reconcile.
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'child-1' } },
+    });
+    await flushChildIdleReconcile();
+
+    expect(board.get('child-1')).toMatchObject({
+      state: 'reconciled',
+      terminalState: 'completed',
+    });
+  });
+
+  test('session.created early registration attributes each parallel child to its own pending call', async () => {
+    // Regression: when a parent launches several task tools in parallel with
+    // different subagent types (e.g. council reviewers a/b/c), the old
+    // peekByParent() returned the FIRST pending call for every child, so
+    // all children were registered with the first subagent's agentType.
+    // info.agent on the child session disambiguates which pending call
+    // started it.
+    const board = new BackgroundJobBoard();
+    const { hook } = createHook({ backgroundJobBoard: board });
+
+    // Parent fires three task tools in parallel: oracle / explorer / fixer.
+    await hook['tool.execute.before'](
+      { tool: 'task', sessionID: 'parent-1', callID: 'call-a' },
+      { args: { subagent_type: 'oracle', description: 'audit loss' } },
+    );
+    await hook['tool.execute.before'](
+      { tool: 'task', sessionID: 'parent-1', callID: 'call-b' },
+      { args: { subagent_type: 'explorer', description: 'audit data' } },
+    );
+    await hook['tool.execute.before'](
+      { tool: 'task', sessionID: 'parent-1', callID: 'call-c' },
+      { args: { subagent_type: 'fixer', description: 'audit fix' } },
+    );
+
+    // Each child session is created while the parent tool calls are still
+    // in flight (before any tool.execute.after). info.agent identifies the
+    // subagent that owns each child.
+    await hook.event({
+      event: {
+        type: 'session.created',
+        properties: {
+          info: { id: 'child-a', parentID: 'parent-1', agent: 'oracle' },
+        },
+      },
+    });
+    await hook.event({
+      event: {
+        type: 'session.created',
+        properties: {
+          info: { id: 'child-b', parentID: 'parent-1', agent: 'explorer' },
+        },
+      },
+    });
+    await hook.event({
+      event: {
+        type: 'session.created',
+        properties: {
+          info: { id: 'child-c', parentID: 'parent-1', agent: 'fixer' },
+        },
+      },
+    });
+
+    expect(board.get('child-a')).toMatchObject({
+      agent: 'oracle',
+      description: 'audit loss',
+    });
+    expect(board.get('child-b')).toMatchObject({
+      agent: 'explorer',
+      description: 'audit data',
+    });
+    expect(board.get('child-c')).toMatchObject({
+      agent: 'fixer',
+      description: 'audit fix',
     });
   });
 
@@ -2290,11 +2803,13 @@ describe('task-session-manager hook', () => {
     const { hook } = createHook({
       backgroundJobBoard: board,
       shouldManageSession: () => false,
+      idleReconcileDelayMs: 0,
     });
 
     await hook.event({
       event: { type: 'session.idle', properties: { sessionID: 'child-1' } },
     });
+    await flushChildIdleReconcile();
 
     // Should remain cancelled — idle does not override terminal state
     const job = board.get('child-1');
@@ -2314,6 +2829,7 @@ describe('task-session-manager hook', () => {
     const { hook } = createHook({
       backgroundJobBoard: board,
       shouldManageSession: (id) => id === 'parent-1',
+      idleReconcileDelayMs: 0,
     });
 
     await hook.event({
@@ -2322,6 +2838,7 @@ describe('task-session-manager hook', () => {
         properties: { sessionID: 'child-1', status: { type: 'idle' } },
       },
     });
+    await flushChildIdleReconcile();
 
     expect(board.get('child-1')).toMatchObject({
       state: 'reconciled',
@@ -2447,13 +2964,957 @@ describe('task-session-manager hook', () => {
       ],
     };
 
-    await hook['experimental.chat.messages.transform']({}, messages as never);
+    await transformMessages(hook, messages as never);
 
     // After recovery: agentMap corrected, board reminders injected
     expect(agentMap.get('orchestrator-1')).toBe('orchestrator');
-    expect(messages.messages[0].parts[0].text).toContain(
-      '### Background Job Board',
+    expect(boardText(messages)).toContain('### Background Job Board');
+    expect(boardText(messages)).toContain('child-transform-1');
+  });
+
+  test('repairs session mapping before composed reminder transforms', async () => {
+    const agentMap = new Map<string, string>();
+    const coordinator = new SessionLifecycle(() => {});
+    const shouldInject = (sessionID: string) =>
+      agentMap.get(sessionID) === 'orchestrator';
+    const { hook: taskSessionManager } = createHook({
+      shouldManageSession: shouldInject,
+      registerSessionAsOrchestrator: (sessionID) => {
+        agentMap.set(sessionID, 'orchestrator');
+      },
+    });
+    const postFileNudge = createPostFileToolNudgeHook({
+      coordinator,
+      shouldInject,
+    });
+    const phaseReminder = createPhaseReminderHook({ shouldInject });
+    const messages = createMessages('orchestrator-1');
+
+    await postFileNudge['tool.execute.after'](
+      { tool: 'Read', sessionID: 'orchestrator-1' },
+      {},
     );
-    expect(messages.messages[0].parts[0].text).toContain('child-transform-1');
+    await taskSessionManager['experimental.chat.messages.transform'](
+      {},
+      messages,
+    );
+    await postFileNudge['experimental.chat.messages.transform']({}, messages);
+    await phaseReminder['experimental.chat.messages.transform']({}, messages);
+
+    expect(agentMap.get('orchestrator-1')).toBe('orchestrator');
+    expect(
+      messages.messages[0].parts.filter(
+        (part) => part.metadata?.[PHASE_REMINDER_METADATA_KEY] === true,
+      ),
+    ).toHaveLength(1);
+  });
+
+  test('nudges once for incomplete todos when parent and children are inactive', async () => {
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo: mock(async () => ({ data: [{ status: 'in_progress' }] })),
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+
+    expect(promptAsync).toHaveBeenCalledTimes(1);
+    expect(promptAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: expect.objectContaining({
+          parts: [expect.objectContaining({ synthetic: true })],
+        }),
+      }),
+    );
+  });
+
+  test('does not evaluate or nudge while a question or permission waits', async () => {
+    const todo = mock(async () => ({ data: [{ status: 'pending' }] }));
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo,
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    await hook.event({
+      event: {
+        type: 'question.asked',
+        properties: { sessionID: 'parent-1', id: 'question-1' },
+      },
+    });
+    await hook.event({
+      event: {
+        type: 'permission.asked',
+        properties: { sessionID: 'parent-1', id: 'permission-1' },
+      },
+    });
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+
+    expect(todo).not.toHaveBeenCalled();
+    expect(promptAsync).not.toHaveBeenCalled();
+  });
+
+  test('cancels a scheduled continuation when an input wait arrives before its timer fires', async () => {
+    const todo = mock(async () => ({ data: [{ status: 'pending' }] }));
+    const children = mock(async () => ({ data: [] }));
+    const status = mock(async () => ({ data: {} }));
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: { todo, children, status, promptAsync },
+    });
+
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await hook.event({
+      event: {
+        type: 'permission.asked',
+        properties: { sessionID: 'parent-1', id: 'permission-1' },
+      },
+    });
+    await flushContinuation();
+
+    expect(todo).not.toHaveBeenCalled();
+    expect(children).not.toHaveBeenCalled();
+    expect(status).not.toHaveBeenCalled();
+    expect(promptAsync).not.toHaveBeenCalled();
+  });
+
+  test('fails closed when an id-less ask races a scheduled continuation', async () => {
+    const todo = mock(async () => ({ data: [{ status: 'pending' }] }));
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo,
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await hook.event({
+      event: {
+        type: 'question.asked',
+        properties: { sessionID: 'parent-1' },
+      },
+    });
+    await flushContinuation();
+
+    expect(todo).not.toHaveBeenCalled();
+    expect(promptAsync).not.toHaveBeenCalled();
+
+    await hook.event({
+      event: {
+        type: 'question.replied',
+        properties: { sessionID: 'parent-1', requestID: 'question-1' },
+      },
+    });
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+
+    expect(todo).not.toHaveBeenCalled();
+    expect(promptAsync).not.toHaveBeenCalled();
+  });
+
+  test('clears only the resolved input wait and resumes on a later idle', async () => {
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo: mock(async () => ({ data: [{ status: 'pending' }] })),
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    await hook.event({
+      event: {
+        type: 'question.asked',
+        properties: { sessionID: 'parent-1', id: 'question-1' },
+      },
+    });
+    await hook.event({
+      event: {
+        type: 'permission.asked',
+        properties: { sessionID: 'parent-1', id: 'permission-1' },
+      },
+    });
+    await hook.event({
+      event: {
+        type: 'question.asked',
+        properties: { sessionID: 'parent-1', id: 'question-2' },
+      },
+    });
+    await hook.event({
+      event: {
+        type: 'question.replied',
+        properties: { sessionID: 'parent-1', requestID: 'unknown-question' },
+      },
+    });
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+
+    expect(promptAsync).not.toHaveBeenCalled();
+
+    await hook.event({
+      event: {
+        type: 'question.replied',
+        properties: { sessionID: 'parent-1', requestID: 'question-1' },
+      },
+    });
+    await hook.event({
+      event: {
+        type: 'permission.replied',
+        properties: { sessionID: 'parent-1', requestID: 'permission-1' },
+      },
+    });
+    await flushContinuation();
+    expect(promptAsync).not.toHaveBeenCalled();
+
+    await hook.event({
+      event: {
+        type: 'question.rejected',
+        properties: { sessionID: 'parent-1', requestID: 'question-2' },
+      },
+    });
+    await flushContinuation();
+    expect(promptAsync).not.toHaveBeenCalled();
+
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+
+    expect(promptAsync).toHaveBeenCalledTimes(1);
+  });
+
+  test('resumes on a later idle after a question rejection', async () => {
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo: mock(async () => ({ data: [{ status: 'pending' }] })),
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    await hook.event({
+      event: {
+        type: 'question.asked',
+        properties: { sessionID: 'parent-1', id: 'question-1' },
+      },
+    });
+    await hook.event({
+      event: {
+        type: 'question.rejected',
+        properties: { sessionID: 'parent-1', requestID: 'question-1' },
+      },
+    });
+    await flushContinuation();
+
+    expect(promptAsync).not.toHaveBeenCalled();
+
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+
+    expect(promptAsync).toHaveBeenCalledTimes(1);
+  });
+
+  test('invalidates an in-flight continuation when an input wait arrives', async () => {
+    let resolveTodo!: (value: { data: { status: string }[] }) => void;
+    const todo = mock(
+      () =>
+        new Promise<{ data: { status: string }[] }>((resolve) => {
+          resolveTodo = resolve;
+        }),
+    );
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo,
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+    expect(todo).toHaveBeenCalledTimes(1);
+
+    await hook.event({
+      event: {
+        type: 'question.asked',
+        properties: { sessionID: 'parent-1', id: 'question-1' },
+      },
+    });
+    resolveTodo({ data: [{ status: 'pending' }] });
+    await flushContinuation();
+
+    expect(promptAsync).not.toHaveBeenCalled();
+  });
+
+  test('internal and synthetic messages do not clear an input wait', async () => {
+    const todo = mock(async () => ({ data: [{ status: 'pending' }] }));
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo,
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    await hook.event({
+      event: {
+        type: 'question.asked',
+        properties: { sessionID: 'parent-1', id: 'question-1' },
+      },
+    });
+    hook.observeChatMessage(
+      {},
+      {
+        message: { role: 'user', sessionID: 'parent-1' },
+        parts: [
+          { type: 'text', synthetic: true, text: 'synthetic response' },
+          createInternalAgentTextPart('internal response'),
+        ],
+      },
+    );
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+
+    expect(todo).not.toHaveBeenCalled();
+    expect(promptAsync).not.toHaveBeenCalled();
+  });
+
+  test('retains input waits across a session error', async () => {
+    const todo = mock(async () => ({ data: [{ status: 'pending' }] }));
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo,
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    await hook.event({
+      event: {
+        type: 'question.asked',
+        properties: { sessionID: 'parent-1', id: 'question-1' },
+      },
+    });
+    await hook.event({
+      event: { type: 'session.error', properties: { sessionID: 'parent-1' } },
+    });
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+
+    expect(todo).not.toHaveBeenCalled();
+    expect(promptAsync).not.toHaveBeenCalled();
+  });
+
+  test('clears stale input waits on session and server cleanup', async () => {
+    for (const lifecycleEvent of [
+      { type: 'session.deleted', properties: { sessionID: 'parent-1' } },
+      { type: 'server.instance.disposed' },
+    ]) {
+      const promptAsync = mock(async () => ({}));
+      const { hook } = createHook({
+        idleReconcileDelayMs: 0,
+        sessionClient: {
+          todo: mock(async () => ({ data: [{ status: 'pending' }] })),
+          children: mock(async () => ({ data: [] })),
+          status: mock(async () => ({ data: {} })),
+          promptAsync,
+        },
+      });
+
+      await hook.event({
+        event: {
+          type: 'question.asked',
+          properties: { sessionID: 'parent-1', id: 'question-1' },
+        },
+      });
+      await hook.event({ event: lifecycleEvent });
+      await hook.event({
+        event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+      });
+      await flushContinuation();
+
+      expect(promptAsync).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  test('coalesces paired idle events and suppresses active children', async () => {
+    const promptAsync = mock(async () => ({}));
+    const children = mock(async () => ({ data: [{ id: 'child-1' }] }));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo: mock(async () => ({ data: [{ status: 'pending' }] })),
+        children,
+        status: mock(async () => ({ data: { 'child-1': { type: 'busy' } } })),
+        promptAsync,
+      },
+    });
+
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await hook.event({
+      event: {
+        type: 'session.status',
+        properties: { sessionID: 'parent-1', status: { type: 'idle' } },
+      },
+    });
+    await flushContinuation();
+
+    expect(children).toHaveBeenCalledTimes(1);
+    expect(promptAsync).not.toHaveBeenCalled();
+  });
+
+  test('runtime-shaped external messages rearm a consumed nudge', async () => {
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo: mock(async () => ({ data: [{ status: 'pending' }] })),
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+    hook.observeChatMessage(
+      {},
+      {
+        message: { role: 'user', sessionID: 'parent-1' },
+        parts: [{ type: 'text', text: 'continue' }],
+      },
+    );
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+
+    expect(promptAsync).toHaveBeenCalledTimes(2);
+  });
+
+  test('file-only external messages rearm a consumed nudge', async () => {
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo: mock(async () => ({ data: [{ status: 'pending' }] })),
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+    hook.observeChatMessage(
+      {},
+      {
+        message: { role: 'user', sessionID: 'parent-1' },
+        parts: [{ type: 'file', filename: 'command-output.txt' }],
+      },
+    );
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+
+    expect(promptAsync).toHaveBeenCalledTimes(2);
+  });
+
+  test('synthetic completion messages do not rearm a consumed nudge', async () => {
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo: mock(async () => ({ data: [{ status: 'pending' }] })),
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+    hook.observeChatMessage(
+      {},
+      {
+        message: { role: 'user', sessionID: 'parent-1' },
+        parts: [
+          {
+            type: 'text',
+            synthetic: true,
+            text: 'Background task completed: child-1',
+          },
+        ],
+      },
+    );
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+
+    expect(promptAsync).toHaveBeenCalledTimes(1);
+  });
+
+  test('nudge busy-to-idle cycle does not send a second unchanged nudge', async () => {
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo: mock(async () => ({ data: [{ status: 'pending' }] })),
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+    await hook.event({
+      event: {
+        type: 'session.status',
+        properties: { sessionID: 'parent-1', status: { type: 'busy' } },
+      },
+    });
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+
+    expect(promptAsync).toHaveBeenCalledTimes(1);
+  });
+
+  test('retry status invalidates a pending continuation evaluation', async () => {
+    let resolveTodo!: (value: { data: { status: string }[] }) => void;
+    const todo = mock(
+      () =>
+        new Promise<{ data: { status: string }[] }>((resolve) => {
+          resolveTodo = resolve;
+        }),
+    );
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo,
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+    expect(todo).toHaveBeenCalledTimes(1);
+
+    await hook.event({
+      event: {
+        type: 'session.status',
+        properties: { sessionID: 'parent-1', status: { type: 'retry' } },
+      },
+    });
+    resolveTodo({ data: [{ status: 'pending' }] });
+    await flushContinuation();
+
+    expect(promptAsync).not.toHaveBeenCalled();
+  });
+
+  test('terminal-unreconciled jobs suppress continuation nudges', async () => {
+    const board = new BackgroundJobBoard();
+    setupCompletedJob(board);
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      backgroundJobBoard: board,
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo: mock(async () => ({ data: [{ status: 'pending' }] })),
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    await hook['experimental.chat.messages.transform'](
+      {},
+      createMessages('parent-1'),
+    );
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+
+    expect(promptAsync).not.toHaveBeenCalled();
+  });
+
+  test('missing SDK response data fails closed without nudging', async () => {
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo: mock(async () => ({ data: undefined })),
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+
+    expect(promptAsync).not.toHaveBeenCalled();
+  });
+
+  test('does not nudge when todos are completed or cancelled only', async () => {
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo: mock(async () => ({
+          data: [{ status: 'completed' }, { status: 'cancelled' }],
+        })),
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+
+    expect(promptAsync).not.toHaveBeenCalled();
+  });
+
+  test('does not nudge while the parent is active', async () => {
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo: mock(async () => ({ data: [{ status: 'pending' }] })),
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: { 'parent-1': { type: 'busy' } } })),
+        promptAsync,
+      },
+    });
+
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+
+    expect(promptAsync).not.toHaveBeenCalled();
+  });
+
+  test('does not nudge while a child is retrying', async () => {
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo: mock(async () => ({ data: [{ status: 'pending' }] })),
+        children: mock(async () => ({ data: [{ id: 'child-1' }] })),
+        status: mock(async () => ({
+          data: { 'child-1': { type: 'retrying' } },
+        })),
+        promptAsync,
+      },
+    });
+
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+
+    expect(promptAsync).not.toHaveBeenCalled();
+  });
+
+  test('does not rearm a consumed nudge for its actual internal part', async () => {
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo: mock(async () => ({ data: [{ status: 'pending' }] })),
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+    hook.observeChatMessage(
+      {},
+      {
+        message: { role: 'user', sessionID: 'parent-1' },
+        parts: [createInternalAgentTextPart('Continue coordinating')],
+      },
+    );
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+
+    expect(promptAsync).toHaveBeenCalledTimes(1);
+  });
+
+  test('keeps a rejected prompt consumed', async () => {
+    const promptAsync = mock(async () => {
+      throw new Error('prompt failed');
+    });
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo: mock(async () => ({ data: [{ status: 'pending' }] })),
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+
+    expect(promptAsync).toHaveBeenCalledTimes(1);
+  });
+
+  test('keeps a failed prompt response consumed', async () => {
+    const promptAsync = mock(async () => ({ error: 'prompt failed' }));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo: mock(async () => ({ data: [{ status: 'pending' }] })),
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+
+    expect(promptAsync).toHaveBeenCalledTimes(1);
+  });
+
+  test('fails closed for missing or throwing SDK endpoints', async () => {
+    const missingPrompt = mock(async () => ({}));
+    const { hook: missingHook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: { promptAsync: missingPrompt },
+    });
+    const throwingPrompt = mock(async () => ({}));
+    const { hook: throwingHook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo: mock(async () => {
+          throw new Error('todo unavailable');
+        }),
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync: throwingPrompt,
+      },
+    });
+
+    for (const hook of [missingHook, throwingHook]) {
+      await hook.event({
+        event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+      });
+    }
+    await flushContinuation();
+
+    expect(missingPrompt).not.toHaveBeenCalled();
+    expect(throwingPrompt).not.toHaveBeenCalled();
+  });
+
+  test('does not nudge when fallback is already in progress', async () => {
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      isFallbackInProgress: () => true,
+      sessionClient: {
+        todo: mock(async () => ({ data: [{ status: 'pending' }] })),
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+
+    expect(promptAsync).not.toHaveBeenCalled();
+  });
+
+  test('does not nudge when fallback starts during evaluation', async () => {
+    let fallbackInProgress = false;
+    let releaseTodos: (() => void) | undefined;
+    const todos = new Promise<{ data: Array<{ status: string }> }>(
+      (resolve) => {
+        releaseTodos = () => resolve({ data: [{ status: 'pending' }] });
+      },
+    );
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      isFallbackInProgress: () => fallbackInProgress,
+      sessionClient: {
+        todo: mock(async () => todos),
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+    fallbackInProgress = true;
+    releaseTodos?.();
+    await flushContinuation();
+
+    expect(promptAsync).not.toHaveBeenCalled();
+  });
+
+  test('final gate blocks a terminal result that arrives during SDK queries', async () => {
+    const board = new BackgroundJobBoard();
+    let childrenCalls = 0;
+    let releaseLatestChildren: (() => void) | undefined;
+    const latestChildren = new Promise<{ data: Array<unknown> }>((resolve) => {
+      releaseLatestChildren = () => resolve({ data: [] });
+    });
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      backgroundJobBoard: board,
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo: mock(async () => ({ data: [{ status: 'pending' }] })),
+        children: mock(async () => {
+          childrenCalls++;
+          return childrenCalls === 1 ? { data: [] } : latestChildren;
+        }),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+    setupCompletedJob(board);
+    releaseLatestChildren?.();
+    await flushContinuation();
+
+    expect(promptAsync).not.toHaveBeenCalled();
+  });
+
+  test('instance disposal invalidates an evaluation whose timer already fired', async () => {
+    let releaseTodos: (() => void) | undefined;
+    const todos = new Promise<{ data: Array<{ status: string }> }>(
+      (resolve) => {
+        releaseTodos = () => resolve({ data: [{ status: 'pending' }] });
+      },
+    );
+    const promptAsync = mock(async () => ({}));
+    const { hook } = createHook({
+      idleReconcileDelayMs: 0,
+      sessionClient: {
+        todo: mock(async () => todos),
+        children: mock(async () => ({ data: [] })),
+        status: mock(async () => ({ data: {} })),
+        promptAsync,
+      },
+    });
+
+    await hook.event({
+      event: { type: 'session.idle', properties: { sessionID: 'parent-1' } },
+    });
+    await flushContinuation();
+    await hook.event({ event: { type: 'server.instance.disposed' } });
+    releaseTodos?.();
+    await flushContinuation();
+
+    expect(promptAsync).not.toHaveBeenCalled();
   });
 });

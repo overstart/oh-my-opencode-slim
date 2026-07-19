@@ -31,7 +31,7 @@ This codemap covers the plugin repository itself and excludes the nested `openco
 | `src/agents/` | Agent factory layer for orchestrator and specialists, including prompt/model overrides, display-name normalization, MCP assignment, and permission shaping. | [View Map](src/agents/codemap.md) |
 | `src/cli/` | Installer, config editing, provider preset generation, and built-in skill installation. | [View Map](src/cli/codemap.md) |
 | `src/config/` | Configuration schema, layered loaders, preset merging, compatibility migrations, constant tables, and agent/MCP policy helpers. | [View Map](src/config/codemap.md) |
-| `src/council/` | Multi-model council orchestration with preset resolution, councillor execution modes, retries, timeout handling, and synthesis fallback flow. | [View Map](src/council/codemap.md) |
+
 | `src/hooks/` | Aggregated runtime hook surface for prompt transforms, recovery logic, task-session aliasing, nudges, and lifecycle policies. | [View Map](src/hooks/codemap.md) |
 | `src/hooks/apply-patch/` | Structured `apply_patch` parsing, matching, recovery, and rewrite pipeline. | [View Map](src/hooks/apply-patch/codemap.md) |
 | `src/hooks/auto-update-checker/` | Startup update detection, cache handling, and optional install prompt flow. | [View Map](src/hooks/auto-update-checker/codemap.md) |
@@ -56,7 +56,7 @@ This codemap covers the plugin repository itself and excludes the nested `openco
 | `src/tools/` | Tool and runtime-command export surface for AST-grep, smartfetch, council orchestration, and `/preset` switching. | [View Map](src/tools/codemap.md) |
 | `src/tools/ast-grep/` | AST-grep binary management and AST-aware search/replace tool flow. | [View Map](src/tools/ast-grep/codemap.md) |
 | `src/tools/smartfetch/` | Fetch/extract/cache pipeline for web content and secondary-model summarization. | [View Map](src/tools/smartfetch/codemap.md) |
-| `src/utils/` | Cross-cutting helpers for logging, session metadata, resumable task aliases, system-message normalization, subagent depth tracking, environment, and runtime operations. | [View Map](src/utils/codemap.md) |
+| `src/utils/` | Cross-cutting helpers for logging, session metadata, resumable task aliases, system-message normalization, environment, and runtime operations. | [View Map](src/utils/codemap.md) |
 | `scripts/` | Build/release validation and generated-artifact maintenance scripts. | [View Map](scripts/codemap.md) |
 
 ## Runtime Control Flow
@@ -91,11 +91,11 @@ This codemap covers the plugin repository itself and excludes the nested `openco
 - `src/index.ts` is the central composition root for nearly every runtime subsystem.
 - `src/config/` feeds `src/agents/`, session/delegation utilities, and MCP registration.
 - `src/cli/skills.ts` and `src/cli/custom-skills.ts` bridge install-time skill packaging with runtime permission policy.
-- Session/delegation utilities depend on `src/multiplexer/` and cooperate with helpers in `src/utils/` for depth tracking, result extraction, task output parsing, and alias state.
+- Session/delegation utilities depend on `src/multiplexer/` and cooperate with helpers in `src/utils/` for result extraction, task output parsing, and alias state.
 - cmux-specific readiness, retry, orphan, and cleanup state lives under
   `src/multiplexer/cmux/`; the generic manager delegates cmux events so other
   multiplexer behavior remains on the upstream path.
-- `src/tools/council.ts` delegates into `src/council/`.
+- Council mode is implemented in `src/agents/`; the orchestrator dispatches councillors as subagents and the council agent synthesizes responses.
 - `src/tools/preset-manager.ts` hooks command execution and updates runtime agent models from configured presets.
 - `src/hooks/task-session-manager/` depends on `src/utils/background-job-board.ts` and `src/utils/task.ts` to support background task tracking, task output parsing, and safe alias reuse.
 - `src/hooks/filter-available-skills/` and agent permission logic rely on shared skill names from the CLI/config layer.

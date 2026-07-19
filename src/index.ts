@@ -1,5 +1,10 @@
 import type { Plugin, ToolDefinition } from '@opencode-ai/plugin';
-import { createAgents, getAgentConfigs, getDisabledAgents } from './agents';
+import {
+  createAgents,
+  getAgentConfigs,
+  getDisabledAgents,
+  isSubagent,
+} from './agents';
 import { buildOrchestratorPrompt } from './agents/orchestrator';
 import { CompanionManager } from './companion/manager';
 import { ensureCompanionVersion } from './companion/updater';
@@ -23,10 +28,10 @@ import {
   setActiveRuntimePreset,
 } from './config/runtime-preset';
 import { applyOrchestratorModelConfig } from './config/strip-orchestrator-model';
-import { CouncilManager } from './council';
 import {
   createApplyPatchHook,
   createAutoUpdateCheckerHook,
+  createCacheMonitorHook,
   createChatHeadersHook,
   createDeepworkCommandHook,
   createDelegateTaskRetryHook,
@@ -42,6 +47,7 @@ import {
 } from './hooks';
 import { processImageAttachments } from './hooks/image-hook';
 import { isMessageWithParts, type MessageWithParts } from './hooks/types';
+import { handleTaskSessionEvent } from './index-event';
 import { createInterviewManager } from './interview';
 import { createBuiltinMcps } from './mcp';
 import {
@@ -54,7 +60,6 @@ import {
   ast_grep_search,
   createAcpRunTool,
   createCancelTaskTool,
-  createCouncilTool,
   createPresetManager,
   createWebfetchTool,
 } from './tools';
@@ -67,7 +72,6 @@ import {
 } from './utils';
 import { isPluginDisabledByEnv } from './utils/env';
 import { initLogger, log } from './utils/logger';
-import { SubagentDepthTracker } from './utils/subagent-depth';
 import { collapseSystemInPlace } from './utils/system-collapse';
 
 /**
@@ -131,6 +135,10 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
     return {};
   }
 
+  // Observation-only prompt-cache watchdog; safe to create before config
+  // loads and must see every event, so it sits outside the try block.
+  const cacheMonitor = createCacheMonitorHook();
+
   // Declare variables that must survive the try/catch for the return
   // closure. These are set inside the try block.
   let config: ReturnType<typeof loadPluginConfig>;
@@ -143,7 +151,6 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
   let runtimeChains: Record<string, string[]>;
   let multiplexerConfig: MultiplexerConfig;
   let multiplexerEnabled: boolean;
-  let depthTracker: SubagentDepthTracker;
   let multiplexerSessionManager: MultiplexerSessionManager;
   let autoUpdateChecker: ReturnType<typeof createAutoUpdateCheckerHook>;
   let sessionAgentMap: Map<string, string>;
@@ -172,7 +179,6 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
   let interviewManager: ReturnType<typeof createInterviewManager>;
   let presetManager: ReturnType<typeof createPresetManager>;
   let companionManager: CompanionManager;
-  let councilTools: ReturnType<typeof createCouncilTool>;
   let cancelTaskTools: ReturnType<typeof createCancelTaskTool>;
   let acpRunTools: Record<string, ReturnType<typeof createAcpRunTool>>;
   let webfetch: ReturnType<typeof createWebfetchTool>;
@@ -252,16 +258,6 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
       startAvailabilityCheck(multiplexerConfig);
     }
 
-    depthTracker = new SubagentDepthTracker();
-
-    // Initialize council tools (only when council is configured)
-    councilTools = config.council
-      ? createCouncilTool(
-          ctx,
-          new CouncilManager(ctx, config, depthTracker, multiplexerEnabled),
-        )
-      : {};
-
     mcps = createBuiltinMcps(config.disabled_mcps, config.websearch);
     acpRunTools =
       Object.keys(config.acpAgents ?? {}).length > 0
@@ -310,8 +306,8 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
     chatHeadersHook = createChatHeadersHook(ctx);
 
     // Initialize foreground fallback manager for runtime model switching.
-    // Enabled by default even without fallback chains — the manager can still
-    // abort rate-limited sessions after maxRetries to prevent infinite freezes.
+    // Agents without a chain (e.g. councillor, owned by CouncilManager) are
+    // left alone — FG only aborts/re-prompts when it has a model to switch to.
     foregroundFallback = new ForegroundFallbackManager(
       ctx.client,
       runtimeChains,
@@ -373,13 +369,19 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
       };
     };
 
-    phaseReminder = createPhaseReminderHook(sessionLifecycle);
+    // Both message transforms share this gate so a rejected nudge cannot be
+    // followed by a phase reminder in the same outgoing turn.
+    const shouldInjectOrchestratorReminder = (sessionID: string) =>
+      sessionAgentMap.get(sessionID) === 'orchestrator';
+
+    phaseReminder = createPhaseReminderHook({
+      shouldInject: shouldInjectOrchestratorReminder,
+    });
 
     filterAvailableSkills = createFilterAvailableSkillsHook(ctx, config);
 
     postFileToolNudge = createPostFileToolNudgeHook({
-      shouldInject: (sessionID) =>
-        sessionAgentMap.get(sessionID) === 'orchestrator',
+      shouldInject: shouldInjectOrchestratorReminder,
       coordinator: sessionLifecycle,
     });
 
@@ -417,7 +419,6 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
     });
 
     tools = {
-      ...councilTools,
       ...cancelTaskTools,
       ...acpRunTools,
       webfetch,
@@ -547,14 +548,20 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
     mcp: mcps,
 
     config: async (opencodeConfig: Record<string, unknown>) => {
-      // Only set default_agent if not already configured by the user
-      // and the plugin config doesn't explicitly disable this behavior
-      if (
-        config.setDefaultAgent !== false &&
-        !(opencodeConfig as { default_agent?: string }).default_agent
-      ) {
-        (opencodeConfig as { default_agent?: string }).default_agent =
-          'orchestrator';
+      // Force default_agent to 'orchestrator' when unset, and also when the
+      // user pointed it at an omos subagent name (opencode rejects subagent
+      // names as default_agent with "default agent must be a primary agent").
+      // Other values (opencode's built-in 'build'/'plan', or a user-defined
+      // primary agent) are respected. This guards against promptAsync calls
+      // that omit the `agent` field from falling back to 'build' when the
+      // orchestrator agent is temporarily unresolved.
+      if (config.setDefaultAgent !== false) {
+        const existing = (opencodeConfig as { default_agent?: string })
+          .default_agent;
+        if (!existing || isSubagent(existing)) {
+          (opencodeConfig as { default_agent?: string }).default_agent =
+            'orchestrator';
+        }
       }
 
       // Merge Agent configs - per-agent shallow merge to preserve
@@ -763,7 +770,12 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
       const tuiAgentModels: Record<string, string> = {};
       const tuiAgentVariants: Record<string, string> = {};
       for (const agentDef of agentDefs) {
-        if (agentDef.name === 'councillor') continue;
+        if (
+          agentDef.name === 'council' ||
+          agentDef.name === 'councillor' ||
+          agentDef.name.startsWith('councillor-')
+        )
+          continue;
 
         const entry = configAgent[agentDef.name] as
           | Record<string, unknown>
@@ -866,6 +878,8 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
     },
 
     event: async (input) => {
+      await cacheMonitor.event(input);
+
       const event = input.event as {
         type: string;
         properties?: {
@@ -921,11 +935,6 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
       }
 
       if (event.type === 'session.created') {
-        const childSessionId = event.properties?.info?.id;
-        const parentSessionId = event.properties?.info?.parentID;
-        if (depthTracker && childSessionId && parentSessionId) {
-          depthTracker.registerChild(parentSessionId, childSessionId);
-        }
         const createdSessionId = event.properties?.info?.id;
         const createdSessionDir = event.properties?.info?.directory;
         if (createdSessionId && createdSessionDir) {
@@ -933,19 +942,29 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
         }
       }
 
-      // Handle multiplexer pane spawning for OpenCode's Task tool sessions
-      await multiplexerSessionManager.onSessionCreated(event);
+      await handleTaskSessionEvent(
+        input as {
+          event: {
+            type: string;
+            properties?: { info?: { id?: string }; sessionID?: string };
+          };
+        },
+        taskSessionManagerHook.event,
+        async () => {
+          // Handle multiplexer pane spawning for OpenCode's Task tool sessions
+          await multiplexerSessionManager.onSessionCreated(event);
 
-      // Handle session status/idle events for pane cleanup early so child panes
-      // close promptly even if later hooks do additional work on idle.
-      await multiplexerSessionManager.onSessionStatus(event);
+          // Handle session status/idle events for pane cleanup early so child panes
+          // close promptly even if later hooks do additional work on idle.
+          await multiplexerSessionManager.onSessionStatus(event);
 
-      // Handle session.deleted events for pane cleanup
-      await multiplexerSessionManager.onSessionDeleted(event);
-
-      if (event.type === 'server.instance.disposed') {
-        await multiplexerSessionManager.cleanupOnInstanceDisposed();
-      }
+          // Handle session.deleted events for pane cleanup
+          await multiplexerSessionManager.onSessionDeleted(event);
+        },
+        async () => {
+          await multiplexerSessionManager.cleanupOnInstanceDisposed();
+        },
+      );
 
       // Runtime model fallback for foreground agents (rate-limit detection)
       await foregroundFallback.handleEvent(input.event);
@@ -956,15 +975,6 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
       await interviewManager.handleEvent(
         input as {
           event: { type: string; properties?: Record<string, unknown> };
-        },
-      );
-
-      await taskSessionManagerHook.event(
-        input as {
-          event: {
-            type: string;
-            properties?: { info?: { id?: string }; sessionID?: string };
-          };
         },
       );
 
@@ -1005,9 +1015,6 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
           sessionLifecycle.dispatchSessionDeleted(sessionID);
         }
         companionManager.onSessionDeleted(sessionID);
-        if (depthTracker && sessionID) {
-          depthTracker.cleanup(sessionID);
-        }
         if (sessionID) {
           sessionAgentMap.delete(sessionID);
           sessionDirectories.delete(sessionID);
@@ -1075,8 +1082,15 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
     // Track which agent each session uses (needed for serve-mode prompt
     // injection)
     'chat.message': async (
-      input: { sessionID: string; agent?: string },
-      output?: { message?: { agent?: string } },
+      input: { sessionID: string; agent?: string; parts?: unknown[] },
+      output?: {
+        message?: {
+          agent?: string;
+          role?: string;
+          sessionID?: string;
+        };
+        parts?: unknown[];
+      },
     ) => {
       const rawAgent = input.agent ?? output?.message?.agent;
       const agent = rawAgent
@@ -1103,6 +1117,7 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
           status: 'busy',
         });
       }
+      taskSessionManagerHook.observeChatMessage(input, output);
     },
 
     // Inject orchestrator system prompt for serve-mode sessions. In serve
@@ -1144,12 +1159,6 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
             (output.system[0] ? `\n\n${output.system[0]}` : '');
         }
       }
-
-      // Inject ephemeral post-file-tool-nudge reminder
-      await postFileToolNudge['experimental.chat.system.transform'](
-        input as never,
-        output as never,
-      );
 
       // Collapse to single system message for provider compatibility.
       // Some providers (e.g. Qwen via VLLM/DashScope) reject multiple
@@ -1195,6 +1204,15 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
         log,
       });
 
+      // Repair session mappings before reminder gates; nudge metadata precedes phase dedup.
+      await taskSessionManagerHook['experimental.chat.messages.transform'](
+        input as never,
+        typedOutput as never,
+      );
+      await postFileToolNudge['experimental.chat.messages.transform'](
+        input as never,
+        typedOutput as never,
+      );
       await phaseReminder['experimental.chat.messages.transform'](
         input as never,
         typedOutput as never,
@@ -1203,10 +1221,7 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
         input as never,
         typedOutput as never,
       );
-      await taskSessionManagerHook['experimental.chat.messages.transform'](
-        input as never,
-        typedOutput as never,
-      );
+      await taskSessionManagerHook.injectBackgroundJobBoard(input, typedOutput);
     },
 
     'tool.execute.after': async (input, output) => {
@@ -1228,7 +1243,5 @@ export type {
   MultiplexerLayout,
   MultiplexerType,
   PluginConfig,
-  TmuxConfig,
-  TmuxLayout,
 } from './config';
 export type { RemoteMcpConfig } from './mcp';

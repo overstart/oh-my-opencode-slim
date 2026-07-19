@@ -695,6 +695,42 @@
       "contributions": [
         "code"
       ]
+    },
+    {
+      "login": "DanMaly",
+      "name": "Daniel Maly",
+      "avatar_url": "https://avatars.githubusercontent.com/u/69809112?v=4",
+      "profile": "https://github.com/DanMaly",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "Chewji9875",
+      "name": "Chewji",
+      "avatar_url": "https://avatars.githubusercontent.com/u/126886556?v=4",
+      "profile": "https://github.com/Chewji9875",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "DanielMaly",
+      "name": "Daniel Maly",
+      "avatar_url": "https://avatars.githubusercontent.com/u/1443921?v=4",
+      "profile": "https://github.com/DanielMaly",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "GiuseppeBellamacina",
+      "name": "Giuseppe Bellamacina",
+      "avatar_url": "https://avatars.githubusercontent.com/u/102151655?v=4",
+      "profile": "https://giuseppebellamacina.com/",
+      "contributions": [
+        "code"
+      ]
     }
   ],
   "commitConvention": "angular"

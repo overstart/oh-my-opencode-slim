@@ -622,6 +622,7 @@ export function createInterviewService(
       await ctx.client.session.promptAsync({
         path: { id: interview.sessionID },
         body: {
+          agent: 'orchestrator',
           parts: [createInternalAgentTextPart(prompt)],
           ...(model ? { model: parseModelReference(model) ?? undefined } : {}),
         },
@@ -648,7 +649,7 @@ export function createInterviewService(
     if (!idea) {
       const activeId = activeInterviewIds.get(input.sessionID);
       const interview = activeId ? interviewsById.get(activeId) : null;
-      if (!interview || interview.status !== 'active') {
+      if (interview?.status !== 'active') {
         output.parts.push(
           createInternalAgentTextPart(
             'The user ran /interview without an idea. Ask them for the product idea in one sentence.',
@@ -871,6 +872,7 @@ export function createInterviewService(
       await ctx.client.session.promptAsync({
         path: { id: interview.sessionID },
         body: {
+          agent: 'orchestrator',
           parts: [createInternalAgentTextPart(prompt)],
           ...(model ? { model: parseModelReference(model) ?? undefined } : {}),
         },
@@ -933,6 +935,7 @@ export function createInterviewService(
       await ctx.client.session.promptAsync({
         path: { id: interview.sessionID },
         body: {
+          agent: 'orchestrator',
           parts: [createInternalAgentTextPart(prompt)],
           ...(model ? { model: parseModelReference(model) ?? undefined } : {}),
         },
@@ -1007,6 +1010,7 @@ export function createInterviewService(
       await ctx.client.session.promptAsync({
         path: { id: interview.sessionID },
         body: {
+          agent: 'orchestrator',
           parts: [createInternalAgentTextPart(prompt)],
           ...(model ? { model: parseModelReference(model) ?? undefined } : {}),
         },

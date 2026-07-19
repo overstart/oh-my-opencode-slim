@@ -87,7 +87,7 @@ const AGENT_DESCRIPTIONS: Record<string, string> = {
 - **Delegate when:** 关键决策需要多个独立视角 • 高风险架构/安全/数据完整性选择 • 分歧本身就是有用信号的模糊问题 • 你希望获得超越单一模型的信心 • 用户明确要求 council/共识/多方意见。
 - **Don't delegate when:** 你有信心的直接任务 • 速度比信心更重要 • 常规实现/调试 • 单一专家明显是正确工具 • 你只需要当前文档/搜索/代码审查，而非多模型共识。
 - **How to call:** 发送完整的问题/任务和相关上下文。明确说明 council 应该解决什么决策、权衡或答案。不要让 council 做常规代码编辑。
-- **Result handling:** Council 返回结构化响应，可能包括：综合的 Council Response、各个 Councillor Details 以及 Council Summary/置信度。当用户要求 council 输出时保留该结构。不要假装 council 只返回了最终答案。如果你需要根据 council 结果采取行动，先简要说明 council 的建议，然后继续。
+- **Result handling:** Council 返回结构化响应，可能包括：综合的 Council Response、各个 Per-Councillor Details 以及 Council Summary/置信度。当用户要求 council 输出时保留该结构。不要假装 council 只返回了最终答案。如果你需要根据 council 结果采取行动，先简要说明 council 的建议，然后继续。
 - **Rule of thumb:** 需要来自不同模型的第二/第三意见？ → @council。需要一个专家通道？ → 使用对应专家。需要最终综合？ → 直接处理。`,
 
   observer: `@observer
@@ -115,10 +115,14 @@ const PARALLEL_DELEGATION_EXAMPLES = [
  * @param disabledAgents - Set of disabled agent names to exclude from the prompt
  * @returns The complete orchestrator prompt string
  */
-export function buildOrchestratorPrompt(disabledAgents?: Set<string>): string {
+export function buildOrchestratorPrompt(
+  disabledAgents?: Set<string>,
+  excludeDescriptions?: string[],
+): string {
   // Filter agent descriptions
   const enabledAgents = Object.entries(AGENT_DESCRIPTIONS)
     .filter(([name]) => !disabledAgents?.has(name))
+    .filter(([name]) => !excludeDescriptions?.includes(name))
     .map(([, desc]) => desc)
     .join('\n\n');
 
@@ -162,6 +166,7 @@ ${enabledAgents}
 
 **路由阈值：**
 - 仅当工作是一个孤立的、清晰的、低风险的操作且委托成本高于执行时，才直接处理。
+- 永远不要直接处理 UI/设计工作——布局、样式、视觉层次、响应式行为、动画和组件感受始终路由到 @designer。
 - 对于多步实现、广泛发现、外部研究、视觉工作或复杂调试，委托给合适的专家。
 - 如果两个或以上部分可以独立推进，在启动依赖工作前并行分派。
 - 不要仅因为某个 agent 存在就委托。也不要仅因为每个单独步骤看似简单就将全部实质性工作留在 orchestrator。
@@ -238,6 +243,8 @@ ${enabledParallelExamples}
 - 如果请求模糊或有多种合理解释，在继续之前提出有针对性的问题
 - 不要猜测关键细节（文件路径、API 选择、架构决策）
 - 对次要细节做出合理假设并简要说明
+- 当工作需要用户输入才能继续时——包括澄清、许可或命令输出——使用 \`question\` 工具，而非在普通的 assistant prompt 中等待。启用自定义输入，请求简洁的粘贴响应或命令输出，并在工具 schema 需要选项时提供一组有边界的小选项。
+- 对于不阻塞工作的普通对话，正常回答，不要无故使用 question 工具。
 
 ## 简洁执行
 - 直接回答，不加开场白
@@ -272,8 +279,12 @@ export function createOrchestratorAgent(
   customPrompt?: string,
   customAppendPrompt?: string,
   disabledAgents?: Set<string>,
+  excludeDescriptions?: string[],
 ): AgentDefinition {
-  const basePrompt = buildOrchestratorPrompt(disabledAgents);
+  const basePrompt = buildOrchestratorPrompt(
+    disabledAgents,
+    excludeDescriptions,
+  );
   const prompt = resolvePrompt(basePrompt, customPrompt, customAppendPrompt);
 
   const definition: AgentDefinition = {

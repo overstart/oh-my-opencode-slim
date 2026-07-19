@@ -24,7 +24,7 @@ This directory serves as the primary entry point for the plugin's runtime behavi
 ```
 OpenCode Core → Plugin Initialization (index.ts)
   → Agent Registration (createAgents/getAgentConfigs)
-  → Tool Registration (createCouncilTool, createCancelTaskTool, etc.)
+  → Tool Registration (createCancelTaskTool, etc.)
   → MCP Registration (createBuiltinMcps)
   → Hook Registration (auto-update, phase reminders, etc.)
   → Event Subscription (session lifecycle, message updates, tool execution)
@@ -85,9 +85,9 @@ OpenCode Core → Plugin Initialization (index.ts)
 Key event flows:
 
 1. **Session Lifecycle**:
-   - `session.created` → register child session in `SubagentDepthTracker`
+   - `session.created` → register child session
    - `session.status` → multiplexer session management and companion updates
-   - `session.deleted` → cleanup depth tracker, session agent map, and companion state
+   - `session.deleted` → cleanup session agent map and companion state
 
 2. **Message Updates**:
    - `message.updated` → record agent/model usage in TUI state
@@ -121,9 +121,9 @@ Key event flows:
 - **Tools** (`src/tools/`): Tool implementations (council, webfetch, AST operations)
 - **Hooks** (`src/hooks/`): Lifecycle hooks for auto-update, phase reminders, etc.
 - **Multiplexer** (`src/multiplexer/`): Tmux/Zellij session management for child sessions
-- **Council** (`src/council/`): Multi-LLM council orchestration
+- **Council** (`src/agents/council.ts`, `src/agents/council-agents.ts`): Multi-LLM council orchestration
 - **Companion** (`src/companion/`): Companion version management
-- **Utils** (`src/utils/`): Logger, environment checks, subagent depth tracking
+- **Utils** (`src/utils/`): Logger, environment checks
 
 ### Cross-Directory Flow
 
